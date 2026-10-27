@@ -6,9 +6,11 @@
   "client": [
     "MinecraftMixin",
     "KeyMappingAccessor",
-    "ContainerScreenAccessor"
+    "ContainerScreenAccessor",
+    "BossHealthOverlayAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
   }
 }
+

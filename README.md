@@ -80,10 +80,82 @@ berücksichtigt, einfacher ist es sie auszuschalten.
 | `GET /screen` | offener Screen: Klasse, Titel, Buttons/Widgets (Text, Position, aktiv), bei Container-Screens zusätzlich `container` |
 | `GET /entities?radius=32&type=zombie&limit=200` | Entities nach Entfernung |
 | `GET /players` | Tab-Liste |
+| `GET /environment?x=&y=&z=` | Biom und Sky-/Block-Licht am geladenen Ort; ungeladen explizit `loaded:false` |
+| `GET /scoreboard` | aktuell clientbekannte Objectives, Scores, Display-Slots und Teams |
+| `GET /bossbars` | aktive Bossbars im Client |
 | `GET /block?x=&y=&z=` | Block + Blockstate |
 | `GET /blocks?x1=&y1=&z1=&x2=&y2=&z2=&include_air=0` | Region (max 32768 Blöcke) als Palette + `[x,y,z,idx]` |
 | `GET /chat/log?since=0` | empfangene Chat-/System-Nachrichten, `since` = zuletzt gesehene id |
 | `GET /routes` | Liste aller Routen |
+
+## Live-Daten und optionale Details
+
+Alle Zustandsabfragen lesen den **aktuellen Clientzustand auf dem Game-Thread**. Es gibt keine
+persistierten Inventar-/Kisten-Snapshots und keine Rekonstruktion aus Events. Die Daten sind das,
+was der Client gerade kennt, keine zusätzliche Abfrage verborgener Serverdaten. Bestehende JSON-Felder bleiben.
+
+### Items
+
+`item_details=true` bei `/player`, `/hand`, `/inventory`, `/container` oder `/screen` ergänzt die
+jeweiligen Item-Objekte um `details`. Ohne Parameter bleibt die bisherige kompakte Item-Darstellung.
+Auch Aktionsantworten, die diese Ansichten zurückgeben, akzeptieren den Parameter.
+
+Details: `enchantments`, `stored_enchantments` (jeweils ID/Level), `lore`, `component_ids`, `potion`
+(ID, Farbe, Basis-Effekte und `duration_scale`) sowie die aktuell im Item vorhandenen `container`-/`bundle`-Komponenten.
+`component_ids` listet vorhandene Komponenten; es ist **kein beliebiger NBT-/Komponentenexport**.
+Fehlende Potion-/Inhaltskomponenten sind `null`. Ein Inhalt ist eine Liste von `{slot,item}` mit
+`size` und `truncated`; leere Slots behalten ihre Indizes. Das liest nur die aktuell übermittelten
+Item-Komponenten, keine Kisten in der Welt.
+
+Je Antwort werden höchstens 128 nicht-leere Items detailliert ausgegeben, mit zwei Ebenen verschachtelter
+Inhalte. Am Limit bleiben die Basisfelder erhalten; `details.available:false` mit `reason:item_limit`
+oder `truncated:true` bei Inhalten kennzeichnet die Auslassung ausdrücklich. Leere Stacks behalten
+auch bei angefragten Details die bisherigen drei Felder.
+
+### Spieler und Welt
+
+`/player` ergänzt `effects` (ID, nullbasierter `amplifier`, `duration_ticks`, `infinite`,
+`ambient`, `visible`, `show_icon`), `air`, `max_air`, `on_fire`, `fire_ticks`, `xp_progress` und `xp_total`.
+Unendliche Effekte haben `duration_ticks:null`. `fire_ticks` ist `null`: der Client kennt den Brennstatus,
+aber keinen verlässlichen synchronisierten Resttimer. Tick-Dauern sind Spielticks, keine garantierte Echtzeit.
+
+`/world` ergänzt `game_time_ticks`, `clock`, `clock_time_ticks` und `time_of_day_ticks`.
+Letzteres ist die Zeit der Dimensions-Standarduhr modulo 24000 (Vanilla-Tageszyklus).
+Ohne Standarduhr sind diese drei Uhrfelder `null`; es wird keine Uhrzeit erfunden.
+
+`/environment` liefert die gespeicherte 4×4×4-Biomzelle (`biome_sampling:"quart"`) und Sky-/Block-Licht
+(0–15, ohne Tageszeit-Abdunklung). So wird kein benachbarter ungeladener Chunk zur Biominterpolation benutzt.
+Eine geladene Position außerhalb der Bauhöhe liefert 400. Ein ungeladener Chunk liefert 200 mit
+`loaded:false`, `reason:"chunk_not_loaded"` und `null` für Biom und Licht.
+
+Auch `/block` und das Blockziel in `/target` melden ungeladene Chunks ausdrücklich (`id:null`, `state:null`),
+statt scheinbar gültige Luft zu liefern. `/blocks` prüft die gesamte Region vor dem Lesen und liefert
+409 mit `loaded:false` und `unloaded_chunks:[[chunk_x,chunk_z],...]`, sobald ein benötigter Chunk fehlt.
+Es wird kein Chunk geladen und keine unvollständige Region als vollständig ausgegeben.
+
+### Menüs, Scoreboard, Bossbars
+
+`menu_details=true` bei `/container` oder `/screen` ergänzt den Container um `details` mit `container_id`,
+`kind` und `supported`. Unterstützt sind:
+
+- Öfen, Schmelzöfen und Räucheröfen: `lit`, `cooking_progress`, `fuel_progress` (0–1).
+- Händler: clientbekannte `offers` mit angepassten Kosten, Ergebnis, Nutzungen, Maximum, XP und Ausverkauft-Status;
+  außerdem Händler-Level/XP und Restock-/Fortschrittsanzeige. Item-Details bleiben separat opt-in.
+- Amboss: `level_cost`.
+- Zaubertisch: drei Optionen mit Levelanforderung, Hinweis-Enchantment und Hinweis-Level. `available` bedeutet
+  nur eine vorhandene Option, nicht dass der Spieler sie bezahlen kann. Nicht übermittelte Hinweise sind `null`.
+
+Andere Menüs behalten ihre generischen Slots und melden `supported:false`, `kind:"unsupported"`.
+Die Werte sind live synchronisierte Clientdaten; unmittelbar nach dem Öffnen kann noch ein Update ausstehen.
+
+`/scoreboard` enthält `display_slots`, `objectives` (inklusive Scores) und `teams`.
+Text steht als lesbarer String und als `*_component` mit Formatierung bereit; nicht kodierbare
+Textkomponenten sind `null`, der lesbare Text bleibt erhalten. Score-Einträge enthalten Zahlenwert,
+formatierten Wert und `hidden`. Es werden nur clientbekannte Einträge ausgegeben.
+
+`/bossbars` enthält ID, Name/Textkomponente, Fortschritt, Farbe, Overlay und die Musik/Nebel/Dunkel-Flags.
+Der Fortschritt ist der aktuell angezeigte, clientseitig interpolierte Wert. Ohne Welt liefern diese
+neuen Welt-/Spielerabfragen wie die bestehenden Routen 409.
 
 ## Handeln
 
@@ -126,7 +198,8 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 ## Tests
 
 Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
-Plugin-Harness aus (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
+Plugin-Harness sowie `LiveDataHarness` gegen echte Minecraft-26.3-Datenobjekte aus
+(ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
 Der HTTP-Test verwendet einen freien lokalen Port; der Plugin-Harness verwendet Port 25581.
 
 Die Tests prüfen Zahlenbereiche, Batch-Validierung, Blockregionsgrößen, Abbruch wartender Aktionen,

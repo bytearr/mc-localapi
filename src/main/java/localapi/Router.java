@@ -67,6 +67,9 @@ public final class Router {
         get("/players", Router::players);
         get("/block", Router::block);
         get("/blocks", Router::blocks);
+        get("/environment", r -> LiveData.environment(needLevel(), r));
+        get("/scoreboard", r -> LiveData.scoreboard(needLevel().getScoreboard(), mc().level.registryAccess()));
+        get("/bossbars", r -> { needPlayer(); return LiveData.bossbars(mc()); });
         get("/keys", Router::keys);
         get("/chat/log", Router::chatLog);
         get("/routes", r -> {
@@ -117,18 +120,21 @@ public final class Router {
 
     static {
         doc("/state", "Overview: world, pause, focus, fps, screen, held keys");
-        doc("/world", "Dimension, weather, height range, entity count, server");
-        doc("/player", "Position, rotation, health, food, xp, states, hands");
+        doc("/world", "Dimension, weather, clock, height range, entity count, server");
+        doc("/player", "Position, rotation, health, food, effects, air, xp, states, hands", "item_details:boolean");
         doc("/target", "Block or entity under the crosshair");
-        doc("/hand", "Main hand, off hand, selected hotbar slot");
-        doc("/inventory", "Player inventory (always available)");
-        doc("/container", "The menu that is really open, all slots");
-        doc("/screen", "Open screen: class, title, widgets");
+        doc("/hand", "Main hand, off hand, selected hotbar slot", "item_details:boolean");
+        doc("/inventory", "Player inventory (always available)", "item_details:boolean");
+        doc("/container", "The menu that is really open, all slots", "item_details:boolean", "menu_details:boolean");
+        doc("/screen", "Open screen: class, title, widgets", "item_details:boolean", "menu_details:boolean");
         doc("/entities", "Entities by distance", "radius:number", "type:string", "limit:integer", "include_self:boolean");
         doc("/players", "Tab list");
         doc("/block", "Block and block state at a position", "x:integer!", "y:integer!", "z:integer!");
         doc("/blocks", "Region of blocks (max 32768)", "x1:integer!", "y1:integer!", "z1:integer!",
                 "x2:integer!", "y2:integer!", "z2:integer!", "include_air:boolean");
+        doc("/environment", "Live biome and lighting (loaded chunks only)", "x:integer!", "y:integer!", "z:integer!");
+        doc("/scoreboard", "Client-known objectives, scores and teams");
+        doc("/bossbars", "Active client boss bars");
         doc("/keys", "All keybinds and their state");
         doc("/chat/log", "Received chat and system messages", "since:integer", "limit:integer");
         doc("/routes", "Plain list of core routes");
@@ -224,6 +230,7 @@ public final class Router {
         o.addProperty("min_y", l.getMinY());
         o.addProperty("max_y", l.getMaxY());
         o.addProperty("entity_count", l.getEntityCount());
+        LiveData.world(o, l);
         var srv = mc().getCurrentServer();
         if (srv != null) o.addProperty("server", srv.ip);
         return o;
@@ -231,6 +238,7 @@ public final class Router {
 
     private static Object player(Request r) {
         LocalPlayer p = needPlayer();
+        ItemView items = new ItemView(r.bool("item_details", false));
         JsonObject o = new JsonObject();
         o.addProperty("name", p.getScoreboardName());
         o.addProperty("uuid", p.getUUID().toString());
@@ -242,6 +250,7 @@ public final class Router {
         Vec3 v = p.getDeltaMovement();
         o.add("velocity", Json.vec(v.x, v.y, v.z));
         o.addProperty("health", p.getHealth());
+        LiveData.player(o, p);
         o.addProperty("max_health", p.getMaxHealth());
         o.addProperty("armor", p.getArmorValue());
         o.addProperty("food", p.getFoodData().getFoodLevel());
@@ -254,8 +263,8 @@ public final class Router {
         o.addProperty("selected_slot", p.getInventory().getSelectedSlot());
         if (mc().gameMode != null) o.addProperty("gamemode", mc().gameMode.getPlayerMode().getName());
         o.addProperty("dimension", id(mc().level.dimension().identifier()));
-        o.add("main_hand", Json.item(p.getMainHandItem()));
-        o.add("off_hand", Json.item(p.getOffhandItem()));
+        o.add("main_hand", items.item(p.getMainHandItem()));
+        o.add("off_hand", items.item(p.getOffhandItem()));
         return o;
     }
 
@@ -267,8 +276,7 @@ public final class Router {
         if (h instanceof BlockHitResult b) {
             BlockPos bp = b.getBlockPos();
             o.addProperty("type", "block");
-            BlockState st = mc().level.getBlockState(bp);
-            o.add("block", Json.block(st, bp.getX(), bp.getY(), bp.getZ()));
+            o.add("block", LiveData.block(mc().level, bp));
             o.addProperty("face", b.getDirection().getName());
         } else if (h instanceof EntityHitResult e) {
             o.addProperty("type", "entity");
@@ -279,29 +287,31 @@ public final class Router {
 
     private static Object hand(Request r) {
         LocalPlayer p = needPlayer();
+        ItemView items = new ItemView(r.bool("item_details", false));
         JsonObject o = new JsonObject();
         o.addProperty("selected_slot", p.getInventory().getSelectedSlot());
-        o.add("main_hand", Json.item(p.getMainHandItem()));
-        o.add("off_hand", Json.item(p.getOffhandItem()));
+        o.add("main_hand", items.item(p.getMainHandItem()));
+        o.add("off_hand", items.item(p.getOffhandItem()));
         return o;
     }
 
     /** Player inventory, always available (needs no open screen). Slot numbers are InventoryMenu slots. */
     private static Object inventory(Request r) {
         LocalPlayer p = needPlayer();
+        ItemView items = new ItemView(r.bool("item_details", false));
         JsonObject o = new JsonObject();
         o.addProperty("selected_slot", p.getInventory().getSelectedSlot());
         o.addProperty("menu_id", p.inventoryMenu.containerId);
-        o.add("carried", Json.item(p.containerMenu.getCarried()));
+        o.add("carried", items.item(p.containerMenu.getCarried()));
         JsonArray arr = new JsonArray();
-        for (Slot s : p.inventoryMenu.slots) arr.add(slotJson(s, null));
+        for (Slot s : p.inventoryMenu.slots) arr.add(slotJson(s, null, items));
         o.add("slots", arr);
         o.addProperty("layout", "menu slots: 0 craft result, 1-4 craft grid, 5-8 armor (head..feet), "
                 + "9-35 main inventory, 36-44 hotbar, 45 offhand");
         return o;
     }
 
-    private static JsonObject slotJson(Slot s, Screen screen) {
+    private static JsonObject slotJson(Slot s, Screen screen, ItemView items) {
         JsonObject o = new JsonObject();
         o.addProperty("index", s.index);
         o.addProperty("container_slot", s.getContainerSlot());
@@ -314,13 +324,14 @@ public final class Router {
             o.addProperty("screen_x", a.localapi$leftPos() + s.x);
             o.addProperty("screen_y", a.localapi$topPos() + s.y);
         }
-        o.add("item", Json.item(s.getItem()));
+        o.add("item", items.item(s.getItem()));
         return o;
     }
 
     /** The menu the player really has open (player.containerMenu): chest, furnace, villager, inventory, ... */
     private static Object container(Request r) {
         LocalPlayer p = needPlayer();
+        ItemView items = new ItemView(r.bool("item_details", false));
         AbstractContainerMenu menu = p.containerMenu;
         Screen scr = mc().gui.screen();
         boolean external = menu != p.inventoryMenu;
@@ -339,15 +350,16 @@ public final class Router {
             o.addProperty("screen", scr.getClass().getName());
             o.addProperty("title", scr.getTitle().getString());
         }
-        o.add("carried", Json.item(menu.getCarried()));
+        o.add("carried", items.item(menu.getCarried()));
         JsonArray arr = new JsonArray();
         int ext = 0;
         for (Slot s : menu.slots) {
-            arr.add(slotJson(s, scr));
+            arr.add(slotJson(s, scr, items));
             if (!(s.container instanceof Inventory)) ext++;
         }
         o.addProperty("slot_count", menu.slots.size());
         o.addProperty("external_slot_count", ext);
+        if (r.bool("menu_details", false)) o.add("details", LiveData.menu(menu, mc().level, items));
         o.add("slots", arr);
         return o;
     }
@@ -426,9 +438,7 @@ public final class Router {
         ClientLevel l = needLevel();
         int x = r.reqInt("x"), y = r.reqInt("y"), z = r.reqInt("z");
         BlockPos bp = new BlockPos(x, y, z);
-        JsonObject o = Json.block(l.getBlockState(bp), x, y, z);
-        o.addProperty("loaded", l.isLoaded(bp));
-        return o;
+        return LiveData.block(l, bp);
     }
 
     private static Object blocks(Request r) {
@@ -439,6 +449,21 @@ public final class Router {
         int minY = Math.max(Math.min(y1, y2), l.getMinY()), maxY = Math.min(Math.max(y1, y2), l.getMaxY());
         int minZ = Math.min(z1, z2), maxZ = Math.max(z1, z2);
         long volume = new BlockRegion(minX, maxX, minY, maxY, minZ, maxZ).volume();
+        // Preflight all needed chunks before reading any state. Never return a partial region as complete.
+        if (volume > 0) {
+            JsonArray missing = new JsonArray();
+            for (int cx = minX >> 4; cx <= (maxX >> 4); cx++)
+                for (int cz = minZ >> 4; cz <= (maxZ >> 4); cz++)
+                    if (LiveData.loadedChunk(l, cx << 4, cz << 4) == null) {
+                        JsonArray position = new JsonArray(); position.add(cx); position.add(cz); missing.add(position);
+                    }
+            if (!missing.isEmpty()) {
+                JsonObject extra = new JsonObject();
+                extra.addProperty("loaded", false);
+                extra.add("unloaded_chunks", missing);
+                throw new HttpError(409, "region contains unloaded chunks", extra);
+            }
+        }
         boolean air = r.bool("include_air", false);
         List<String> palette = new ArrayList<>();
         Map<String, Integer> index = new LinkedHashMap<>();
@@ -449,7 +474,7 @@ public final class Router {
             for (long y = minY; y <= maxY; y++)
                 for (long z = minZ; z <= maxZ; z++) {
                     mp.set((int) x, (int) y, (int) z);
-                    BlockState st = l.getBlockState(mp);
+                    BlockState st = LiveData.loadedChunk(l, (int) x, (int) z).getBlockState(mp);
                     if (!air && st.isAir()) continue;
                     String bid = BuiltInRegistries.BLOCK.getKey(st.getBlock()).toString();
                     int pi = index.computeIfAbsent(bid, k -> { palette.add(k); return palette.size() - 1; });

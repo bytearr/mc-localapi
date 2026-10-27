@@ -110,6 +110,7 @@ public final class Dispatcher {
             f.cancel(false); // queued work is skipped, an action must not run late
             return Outcome.err(504, "no answer within " + timeoutMs + " ms (loading screen, frozen client, or slow handler?)");
         } catch (InterruptedException ie) {
+            f.cancel(false); // interrupted callers must not leave queued actions behind
             Thread.currentThread().interrupt();
             return Outcome.err(500, "interrupted");
         } catch (ExecutionException ee) {
@@ -165,3 +166,4 @@ public final class Dispatcher {
         }
     }
 }
+

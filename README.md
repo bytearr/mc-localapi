@@ -30,7 +30,7 @@ Schutz: Loopback-only, `Host` muss `127.0.0.1`/`localhost` sein, Requests mit `O
 ```
 
 HTTP-Status: 200, 400 Parameter, 401 Passwort, 404 Route, 405 Methode, 409 Zustand (z. B. nicht in einer Welt),
-504 Spiel hat nicht in `timeoutMs` geantwortet.
+413 JSON-Body größer als 1 MiB, 504 Spiel hat nicht in `timeoutMs` geantwortet.
 
 ## Nicht blockierend
 
@@ -40,7 +40,8 @@ einmal pro gerendertem Frame ab, höchstens `frameBudgetMs` (4 ms), Rest im näc
 bestimmten Abständen pollen, aber öfter als jeden Frame bringt nichts. Sinnvoll sind 20 bis 50 ms zwischen
 Zustandsabfragen. Mehrere Aktionen, die zusammen passieren sollen, gehören in `POST /batch` (ein Schritt).
 
-Zeitüberschreitung: ein abgebrochener Request wird nicht mehr nachträglich ausgeführt.
+Zeitüberschreitung/Abbruch: noch wartende Aktionen werden nicht mehr nachträglich ausgeführt.
+Bereits gestartete Aktionen (auch asynchrone Plugin-Arbeit) lassen sich damit nicht zurückrollen.
 
 ## Fokus und Pause
 
@@ -122,6 +123,20 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 `.\build.ps1` (JDK 25, kompiliert direkt gegen `client-26.3.jar` und Fabric API). Ergebnis:
 `build\localapi-1.0.0.jar`, in den `mods`-Ordner kopieren.
 
+## Tests
+
+Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
+Plugin-Harness aus (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
+Der HTTP-Test verwendet einen freien lokalen Port; der Plugin-Harness verwendet Port 25581.
+
+Die Tests prüfen Zahlenbereiche, Batch-Validierung, Blockregionsgrößen, Abbruch wartender Aktionen,
+das HTTP-Body-Limit und den Server-Shutdown. Gültige Core-Integerwerte werden weiterhin abgerundet.
+Ungültige Werte (NaN/Infinity, Überläufe, Objekte/Arrays statt Skalaren) liefern 400.
+Batch-Fehler bleiben pro Eintrag sichtbar; spätere gültige Einträge werden weiterhin ausgeführt.
+
+Vor dem Merge im Client prüfen: `/state`, Tasten halten/loslassen, Container-Klicks, normale und
+höhenmäßig leere `/blocks`-Regionen, `/batch`, Screenshot, Plugin-Streams und Portänderung vor/nach Neustart.
+
 ## Grenzen
 
 - Nicht-Container-Screens (Optionen, Titelbildschirm) werden gelesen und geschlossen, Buttons darin
@@ -186,3 +201,4 @@ Live-Untertitel aus Simple Voice Chat, HUD als Kopie von voicetranscript 1.5.0 (
 `.\build.ps1`, `plugins\voice-ref\build.ps1`, dann bei geschlossenem Minecraft `.\install.ps1` (kopiert beide Jars und gibt das Referenzplugin per Hash frei).
 
 install.ps1 installiert Mod, Voice-Plugin und captions und trägt beide Plugin-SHA-256 in plugins.json ein. Minecraft vorher schließen. Den alten Mod voicetranscript deaktivieren (.jar → .jar.disabled), sonst laufen zwei Whisper-Instanzen und zwei HUDs.
+

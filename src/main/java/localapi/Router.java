@@ -91,7 +91,7 @@ public final class Router {
             return ok();
         });
         post("/screenshot", Router::screenshot);
-        post("/batch", Router::batch);
+        post("/batch", r -> BatchRequests.dispatch(r, Router::dispatch));
     }
 
     private Router() {}
@@ -438,17 +438,17 @@ public final class Router {
         int minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
         int minY = Math.max(Math.min(y1, y2), l.getMinY()), maxY = Math.min(Math.max(y1, y2), l.getMaxY());
         int minZ = Math.min(z1, z2), maxZ = Math.max(z1, z2);
-        long volume = (long) (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
-        if (volume > 32768) throw new HttpError(400, "region too large: " + volume + " blocks (max 32768)");
+        long volume = new BlockRegion(minX, maxX, minY, maxY, minZ, maxZ).volume();
         boolean air = r.bool("include_air", false);
         List<String> palette = new ArrayList<>();
         Map<String, Integer> index = new LinkedHashMap<>();
         JsonArray rows = new JsonArray();
         BlockPos.MutableBlockPos mp = new BlockPos.MutableBlockPos();
-        for (int x = minX; x <= maxX; x++)
-            for (int y = minY; y <= maxY; y++)
-                for (int z = minZ; z <= maxZ; z++) {
-                    mp.set(x, y, z);
+        // Long counters cannot wrap at Integer.MAX_VALUE. Empty height intersections do no work.
+        for (long x = minX; volume > 0 && x <= maxX; x++)
+            for (long y = minY; y <= maxY; y++)
+                for (long z = minZ; z <= maxZ; z++) {
+                    mp.set((int) x, (int) y, (int) z);
                     BlockState st = l.getBlockState(mp);
                     if (!air && st.isAir()) continue;
                     String bid = BuiltInRegistries.BLOCK.getKey(st.getBlock()).toString();
@@ -527,6 +527,8 @@ public final class Router {
     }
 
     private static void setLook(LocalPlayer p, float yaw, float pitch) {
+        if (!Float.isFinite(yaw) || !Float.isFinite(pitch))
+            throw new HttpError(400, "yaw and pitch must be finite");
         pitch = Math.max(-90f, Math.min(90f, pitch));
         p.setYRot(yaw);
         p.setXRot(pitch);
@@ -595,32 +597,4 @@ public final class Router {
         return fut;
     }
 
-    /** Several calls in ONE game-thread step: body {"requests":[{"path":"/key/down","body":{...}}, ...]}. */
-    private static Object batch(Request r) throws Exception {
-        JsonElement el = r.body().get("requests");
-        if (el == null || !el.isJsonArray()) throw new HttpError(400, "requests must be an array");
-        if (el.getAsJsonArray().size() > 100) throw new HttpError(400, "max 100 requests");
-        JsonArray out = new JsonArray();
-        for (JsonElement e : el.getAsJsonArray()) {
-            JsonObject item = e.getAsJsonObject();
-            String path = item.get("path").getAsString();
-            JsonObject body = item.has("body") ? item.getAsJsonObject("body") : new JsonObject();
-            JsonObject res = new JsonObject();
-            try {
-                if (path.equals("/batch") || path.equals("/screenshot"))
-                    throw new HttpError(400, path + " cannot be used inside /batch");
-                Object v = dispatch(new Request("POST", path, Map.of(), body));
-                res.addProperty("ok", true);
-                res.add("data", (JsonElement) v);
-            } catch (HttpError he) {
-                res.addProperty("ok", false);
-                res.addProperty("error", he.getMessage());
-            }
-            out.add(res);
-        }
-        return out;
-    }
 }
-
-
-

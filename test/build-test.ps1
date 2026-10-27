@@ -29,5 +29,9 @@ Set-Content "$mcDir\Gone.java" 'package gone; public class Gone { public String 
 Set-Content "$mcDir\Entry.java" 'package gone; import localapi.api.*; public class Entry implements LocalApiPlugin { Gone g = new Gone(); public void register(PluginContext c) {} }'
 & "$JDK\bin\javac" --release 25 -proc:none -cp "$core;$CP" -d $cls "$mcDir\Gone.java" "$mcDir\Entry.java"
 Make-Jar 'missingclass' '{"id":"missingclass","version":"1","apiVersion":1,"entrypoint":"gone.Entry"}' @('gone\Entry.class')
+# Fixtures must be loaded from their jars, not accidentally from the harness classpath.
+# In particular Missing/Gone are deliberately absent from the corresponding jars.
+Remove-Item "$cls\testplugin","$cls\gone" -Recurse -Force
 Get-ChildItem "$w\root\plugins" | % Name
+
 

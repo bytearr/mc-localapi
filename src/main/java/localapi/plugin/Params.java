@@ -50,11 +50,13 @@ public final class Params {
                     return e.isJsonPrimitive() && e.getAsJsonPrimitive().isString() ? e.getAsString() : null;
                 case INTEGER: {
                     if (!(e.isJsonPrimitive() && e.getAsJsonPrimitive().isNumber())) return null;
-                    double d = e.getAsDouble();
-                    return d == Math.rint(d) && !Double.isInfinite(d) ? (Object) e.getAsLong() : null;
+                    return e.getAsBigDecimal().longValueExact();
                 }
-                case NUMBER:
-                    return e.isJsonPrimitive() && e.getAsJsonPrimitive().isNumber() ? (Object) e.getAsDouble() : null;
+                case NUMBER: {
+                    if (!(e.isJsonPrimitive() && e.getAsJsonPrimitive().isNumber())) return null;
+                    double d = e.getAsDouble();
+                    return Double.isFinite(d) ? d : null;
+                }
                 case BOOLEAN:
                     return e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean() ? (Object) e.getAsBoolean() : null;
                 case JSON:
@@ -118,3 +120,4 @@ public final class Params {
         @Override public boolean bool(String n, boolean d) { return v.containsKey(n) ? (Boolean) v.get(n) : d; }
     }
 }
+

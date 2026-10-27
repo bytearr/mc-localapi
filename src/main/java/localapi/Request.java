@@ -14,7 +14,10 @@ public record Request(String method, String path, Map<String, String> query, Jso
 
     public String str(String k, String def) {
         JsonElement e = body.get(k);
-        if (e != null && !e.isJsonNull()) return e.getAsString();
+        if (e != null && !e.isJsonNull()) {
+            if (!e.isJsonPrimitive()) throw new HttpError(400, "parameter " + k + " must be a scalar");
+            return e.getAsString();
+        }
         String q = query.get(k);
         return q != null ? q : def;
     }
@@ -28,7 +31,11 @@ public record Request(String method, String path, Map<String, String> query, Jso
     public double dbl(String k, double def) {
         String s = str(k, null);
         if (s == null) return def;
-        try { return Double.parseDouble(s); }
+        try {
+            double value = Double.parseDouble(s);
+            if (!Double.isFinite(value)) throw new NumberFormatException();
+            return value;
+        }
         catch (NumberFormatException e) { throw new HttpError(400, "parameter " + k + " is not a number"); }
     }
 
@@ -40,8 +47,10 @@ public record Request(String method, String path, Map<String, String> query, Jso
     public int integer(String k, int def) {
         String s = str(k, null);
         if (s == null) return def;
-        try { return (int) Math.floor(Double.parseDouble(s)); }
-        catch (NumberFormatException e) { throw new HttpError(400, "parameter " + k + " is not a number"); }
+        double value = Math.floor(dbl(k, def));
+        if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE)
+            throw new HttpError(400, "parameter " + k + " is outside the integer range");
+        return (int) value;
     }
 
     public int reqInt(String k) {
@@ -55,3 +64,4 @@ public record Request(String method, String path, Map<String, String> query, Jso
         return s.equals("1") || s.equalsIgnoreCase("true") || s.equalsIgnoreCase("yes");
     }
 }
+

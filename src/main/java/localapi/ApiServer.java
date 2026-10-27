@@ -16,6 +16,7 @@ import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -25,6 +26,9 @@ public final class ApiServer {
     private final Config cfg;
     private volatile byte[] password;
     private HttpServer server;
+    private int boundPort;
+    private ExecutorService executor;
+    private static final int MAX_BODY_BYTES = 1 << 20;
 
     public ApiServer(Config cfg) {
         this.cfg = cfg;
@@ -37,21 +41,23 @@ public final class ApiServer {
     }
 
     public void start() throws IOException {
-        // getLoopbackAddress() -> 127.0.0.1 only. Never a wildcard address.
-        server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), cfg.port), 64);
+        server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), cfg.port), 64);
+        boundPort = server.getAddress().getPort();
         AtomicInteger n = new AtomicInteger();
         ThreadFactory tf = r -> {
             Thread t = new Thread(r, "localapi-http-" + n.incrementAndGet());
             t.setDaemon(true);
             return t;
         };
-        server.setExecutor(Executors.newFixedThreadPool(cfg.httpThreads, tf));
+        executor = Executors.newFixedThreadPool(cfg.httpThreads, tf);
+        server.setExecutor(executor);
         server.createContext("/", this::handle);
         server.start();
     }
 
     public void stop() {
         if (server != null) server.stop(0);
+        if (executor != null) executor.shutdownNow();
     }
 
     private void handle(HttpExchange ex) throws IOException {
@@ -62,7 +68,7 @@ public final class ApiServer {
             }
             // DNS-rebinding / browser protection: only literal loopback hosts, and no Origin header.
             String host = ex.getRequestHeaders().getFirst("Host");
-            if (host == null || !(host.equals("127.0.0.1:" + cfg.port) || host.equals("localhost:" + cfg.port)
+            if (host == null || !(host.equals("127.0.0.1:" + boundPort) || host.equals("localhost:" + boundPort)
                     || host.equals("127.0.0.1") || host.equals("localhost"))) {
                 send(ex, 403, error("bad host")); return;
             }
@@ -88,7 +94,10 @@ public final class ApiServer {
             String method = ex.getRequestMethod();
             JsonObject body = new JsonObject();
             if (method.equals("POST") || method.equals("PUT")) {
-                byte[] raw = ex.getRequestBody().readNBytes(1 << 20);
+                byte[] raw = ex.getRequestBody().readNBytes(MAX_BODY_BYTES + 1);
+                if (raw.length > MAX_BODY_BYTES) {
+                    send(ex, 413, error("body exceeds 1 MiB")); return;
+                }
                 String s = new String(raw, StandardCharsets.UTF_8).trim();
                 if (!s.isEmpty()) {
                     try {
@@ -200,4 +209,5 @@ public final class ApiServer {
         ex.getResponseBody().write(b);
     }
 }
+
 

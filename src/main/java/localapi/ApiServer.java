@@ -28,6 +28,7 @@ public final class ApiServer {
     private HttpServer server;
     private int boundPort;
     private ExecutorService executor;
+    private final java.util.Set<StreamConnection> streams = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private static final int MAX_BODY_BYTES = 1 << 20;
 
     public ApiServer(Config cfg) {
@@ -56,6 +57,7 @@ public final class ApiServer {
     }
 
     public void stop() {
+        streams.forEach(StreamConnection::abort);
         if (server != null) server.stop(0);
         if (executor != null) executor.shutdownNow();
     }
@@ -136,14 +138,18 @@ public final class ApiServer {
             return false;
         }
         StreamConnection sc = new StreamConnection();
+        streams.add(sc);
+        sc.onClose(() -> streams.remove(sc));
         Dispatcher.Outcome out;
         try {
             out = Dispatcher.openStream(req, sc);
         } catch (Throwable t) {
+            sc.abort();
             StreamConnection.release();
             throw t;
         }
         if (!out.ok()) {
+            sc.close();
             StreamConnection.release();
             send(ex, out.status(), toJson(out));
             return false;

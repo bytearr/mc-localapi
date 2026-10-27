@@ -85,10 +85,73 @@ berücksichtigt, einfacher ist es sie auszuschalten.
 | `GET /bossbars` | aktive Bossbars im Client |
 | `GET /advancements` | clientbekannte Erfolge und übermittelter Fortschritt pro Kriterium |
 | `GET /stats` | tatsächlich im Client vorhandene Statistikzähler |
+| `GET /events` | authentifizierter NDJSON-Livestream mit Änderungs-Hinweisen |
+| `GET /journal?since=0&limit=200` | historische Ereignisse der aktuellen/zuletzt beendeten Session |
 | `GET /block?x=&y=&z=` | Block + Blockstate |
 | `GET /blocks?x1=&y1=&z1=&x2=&y2=&z2=&include_air=0` | Region (max 32768 Blöcke) als Palette + `[x,y,z,idx]` |
 | `GET /chat/log?since=0` | empfangene Chat-/System-Nachrichten, `since` = zuletzt gesehene id |
 | `GET /routes` | Liste aller Routen |
+
+## Live-Stream und Session-Journal
+
+`GET /events` ist ein authentifizierter NDJSON-Stream (eine JSON-Zeile pro Frame), kein gewöhnlicher
+JSON-Response und nicht für `/batch`. Beispiel: `curl -N -H "X-Password: ..." http://127.0.0.1:25580/events`.
+Er verwendet dieselben Authentifizierungsregeln und das gemeinsame `maxStreams`-Limit wie Plugin-Streams.
+
+- `hello` enthält `resync:true`. Nach **jedem** Verbindungsaufbau aktuelle Werte von den benötigten
+  Live-Endpunkten holen. Der folgende `resync`-Frame nennt `session`, `active`, `seq` und `journal_last_id`.
+- `state_changed` enthält `session`, `seq`, `resync:true` und `paths`, z. B.
+  `["/inventory","/container"]`. Das sind zusammengefasste Invalidierungen: dort können sich Werte
+  geändert haben. Es werden **keine** Inventar-, Kisten- oder anderen Zustandssnapshots übertragen/gespeichert.
+  Parameter für positionsbezogene Endpunkte wählt weiterhin das Script.
+- `historical` enthält `session`, `seq` und `event`, denselben historischen Datensatz wie das Journal.
+- `heartbeat` enthält die bisherigen Felder `t`, `frames` und `dropped`; Heartbeats haben keine `seq`.
+
+Pro Verbindung bleiben höchstens 512 ausstehende Frames. Bei Überlauf werden die ältesten verworfen,
+ohne auf den Leser zu warten. Eine Lücke in `seq` oder ein Anstieg von `heartbeat.dropped` bedeutet:
+benötigten aktuellen Zustand erneut live lesen. Das gilt auch, wenn der Stream währenddessen weiterlief.
+Die Sequenz zählt publizierte Frames innerhalb dieses Mod-Laufs; ein Wechsel der `session` verlangt
+ebenfalls einen frischen Zustand. `/events?since=...` wird abgelehnt: **kein Replay von Zustandsänderungen**.
+Heartbeats werden auch bei kontinuierlichem Traffic gesendet. Server-Stopp beendet seine Streams.
+
+Invalidierungen kommen nach verarbeiteten Vanilla-Paketen für Inventar/Menüs, Spielerwerte,
+Scoreboards, Bossbars, Erfolge, Statistiken, Chunks/Licht und Spielerliste; außerdem nach lokalen
+Container-/Creative-/Drop-Aktionen und API-Aktionen. Spielerbewegung und Screenwechsel werden pro
+Clienttick erkannt. Weltzeit, interpolierte Entities und Ziel werden konservativ jeden aktiven
+Clienttick invalidiert, aktive Effekte ebenfalls. Ein Hinweis garantiert keinen bestimmten neuen Wert,
+und mod-interne Änderungen außerhalb dieser Hooks sind keine vollständig abgedeckte Eventquelle.
+Live-Abfragen bleiben maßgeblich; der Stream ist kein lückenloses Änderungsprotokoll.
+
+### Historische Fakten
+
+`GET /journal` liefert `session` (UUID oder `null`), `active`, `last_id`, `next_since`, `has_more`
+und `events`. Ein Ereignis hat `id`, `session`, `time` (lokale Beobachtungszeit in Unix-Millisekunden),
+`kind` und `data`. Es bleiben ausschließlich diese vergangenen Fakten erhalten:
+
+- `session_started`, `session_ended`: Grenzen einer Play-Verbindung.
+- `chat_received`: tatsächlich empfangener Chat oder Systemtext mit `kind`, bekanntem `sender` und
+  `sender_uuid`, `text` sowie `signature` (Base64, sonst `null`). Actionbar/HUD-Updates gehören nicht hinein.
+- `chat_deletion_requested`: eine verarbeitete Server-Löschanforderung mit der aufgelösten Signatur.
+  Damit lässt sich signierter Chat zuordnen. Die ursprüngliche Empfangstatsache wird nicht umgeschrieben;
+  die Löschanforderung behauptet nicht, dass die Nachricht noch angezeigt wurde oder bereits entfernt ist.
+  Für unsignierte Nachrichten wird keine Zuordnung erfunden.
+- `death`: das Server-Todessignal für den lokalen Spieler, einmal pro Leben, mit `cause`
+  (empfangene Todesnachricht, keine erfundene Damage-Type-ID), `cause_source`, `dimension` und
+  `position:[x,y,z]` bei Beobachtung. Unbekannte Ursache ist `null`.
+- `dimension_changed`: ein beim Respawn-Paket tatsächlich gewechselter Dimensionsschlüssel mit `from`
+  und `to`. Respawn in derselben Dimension erzeugt keinen Wechsel; Neuverbinden ebenfalls nicht.
+
+Zum Blättern zunächst `/journal?limit=200`, dann `since=<next_since>&session=<session>` verwenden.
+`limit` ist 1–1000; `since` ist eine exklusive Ereignis-ID. Bei `since>0` ist die Session erforderlich.
+Eine veraltete Session oder ein Cursor jenseits des Journals ergibt 409. `last_id` ist die neueste ID,
+**nicht** der Fortsetzungs-Cursor einer noch unvollständigen Seite.
+
+Die gesamte Historie bleibt im Arbeitsspeicher für diese Session, unabhängig von verlorenen Streamframes.
+Nach Disconnect ist sie bis zur nächsten Play-Verbindung noch lesbar; diese leert das Journal und
+vergibt eine neue Session-ID. Ein Mod-/Client-Neustart leert es ebenfalls. Keine Dateien, Marker,
+Screenshots, Inventar-/Kistenstände, Loadouts oder Materiallisten. Der Speicherbedarf wächst mit der
+Session-Historie. Das bestehende `/chat/log` mit seinen bisherigen JSON-Feldern bleibt unverändert.
+Historische Fakten sind **keine Quelle für aktuellen Zustand**.
 
 ## Erfolge und Statistiken
 
@@ -118,7 +181,7 @@ Beide Endpunkte lesen auf dem Game-Thread live den Clientbestand, ohne eigene Sp
 Hintergrundabfrage oder automatische Serveranfrage. Statistiken können bis zur Vanilla-Synchronisierung
 (z. B. beim Öffnen des Statistikbildschirms) fehlen oder den zuletzt empfangenen Wert enthalten.
 Die Antwort behauptet keinen frisch abgefragten Serverstand. Ohne aktive Welt liefern beide Routen 409.
-Diese Ansichten sind unabhängig vom geplanten NDJSON-Stream und Session-Journal.
+Diese Live-Ansichten bleiben unabhängig vom NDJSON-Stream und Session-Journal.
 
 ## Live-Daten und optionale Details
 
@@ -230,9 +293,9 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 ## Tests
 
 Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
-Plugin-Harness sowie `LiveDataHarness` und `ProgressDataHarness` gegen echte Minecraft-26.3-Datenobjekte aus
+Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness` und `SessionEventsHarness` gegen echte Minecraft-26.3-Datenobjekte aus
 (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
-Der HTTP-Test verwendet einen freien lokalen Port; der Plugin-Harness verwendet Port 25581.
+Die HTTP-Tests verwenden freie lokale Ports; der Plugin-Harness verwendet Port 25581.
 
 Die Tests prüfen Zahlenbereiche, Batch-Validierung, Blockregionsgrößen, Abbruch wartender Aktionen,
 das HTTP-Body-Limit und den Server-Shutdown. Gültige Core-Integerwerte werden weiterhin abgerundet.

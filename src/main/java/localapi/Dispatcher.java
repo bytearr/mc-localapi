@@ -135,6 +135,7 @@ public final class Dispatcher {
     // ------------------------------------------------------------------ stream
 
     public static boolean isActiveStream(String path) {
+        if (Router.normalize(path).equals("/events")) return true;
         PluginManager.Binding b = PluginManager.binding(Router.normalize(path));
         return b != null && b.blocked() == null && b.fn() != null && b.fn().isStream();
     }
@@ -145,6 +146,14 @@ public final class Dispatcher {
      */
     public static Outcome openStream(Request req, StreamSink sink) {
         String path = Router.normalize(req.path());
+        if (path.equals("/events")) {
+            if (!req.method().equals("GET")) return Outcome.err(405, "/events needs GET");
+            if (req.has("since")) return Outcome.err(400, "/events does not replay state; fetch live endpoints after connecting");
+            Outcome result = await(GameQueue.submit(() -> { SessionEvents.INSTANCE.subscribe(sink); return null; }),
+                    LocalApiMod.CONFIG == null ? 3000 : LocalApiMod.CONFIG.timeoutMs, null, path);
+            if (!result.ok()) sink.close();
+            return result;
+        }
         PluginManager.Binding b = PluginManager.binding(path);
         if (b == null) return notFound(path);
         Outcome pre = precheck(b, req, path);

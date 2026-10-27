@@ -13,6 +13,8 @@ $testCP = "$classes;$core;$CP;" + ($runtime -join ';')
 if ($LASTEXITCODE) { throw 'live-data checks failed' }
 & "$JDK\bin\java" -cp $testCP localapi.ProgressDataHarness
 if ($LASTEXITCODE) { throw 'advancement/statistics checks failed' }
+& "$JDK\bin\java" -cp $testCP localapi.SessionEventsHarness
+if ($LASTEXITCODE) { throw 'session/stream checks failed' }
 & "$JDK\bin\java" -cp $testCP localapi.RegressionHarness
 if ($LASTEXITCODE) { throw 'regression checks failed' }
 & "$JDK\bin\java" -cp $testCP harness.Harness "$PSScriptRoot\work\root" 'none' '0'

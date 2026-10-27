@@ -72,6 +72,8 @@ public final class Router {
         get("/bossbars", r -> { needPlayer(); return LiveData.bossbars(mc()); });
         get("/advancements", r -> ProgressData.advancements(needPlayer().connection.getAdvancements()));
         get("/stats", r -> ProgressData.statistics(needPlayer().getStats()));
+        get("/journal", r -> SessionEvents.INSTANCE.journal(r));
+        get("/events", r -> { throw new HttpError(400, "/events is an NDJSON stream; open it directly with GET"); });
         get("/keys", Router::keys);
         get("/chat/log", Router::chatLog);
         get("/routes", r -> {
@@ -139,6 +141,8 @@ public final class Router {
         doc("/bossbars", "Active client boss bars");
         doc("/advancements", "Client-known advancements and received criterion progress");
         doc("/stats", "Counters currently present in the client statistics map");
+        doc("/events", "Transient NDJSON invalidations; fetch current state from live routes");
+        doc("/journal", "Historical facts for this session, never current state", "since:integer", "limit:integer", "session:string");
         doc("/keys", "All keybinds and their state");
         doc("/chat/log", "Received chat and system messages", "since:integer", "limit:integer");
         doc("/routes", "Plain list of core routes");
@@ -168,7 +172,9 @@ public final class Router {
             throw new HttpError(404, "no such path: " + req.path() + ". These paths exist (see 'paths').", extra);
         }
         if (route.mutating && !req.method().equals("POST")) throw new HttpError(405, req.path() + " needs POST");
-        return route.h.handle(req);
+        Object result = route.h.handle(req);
+        if (route.mutating) ClientEvents.invalidate("/state", "/player", "/inventory", "/container", "/screen", "/target", "/hand");
+        return result;
     }
 
     // ------------------------------------------------------------------ helpers

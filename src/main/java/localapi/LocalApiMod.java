@@ -6,6 +6,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,15 +34,23 @@ public final class LocalApiMod implements ClientModInitializer {
 
         ClientTickEvents.START_CLIENT_TICK.register(Keys::onStartTick);
         ClientTickEvents.END_CLIENT_TICK.register(Keys::onEndTick);
+        ClientTickEvents.END_CLIENT_TICK.register(ClientEvents::tick);
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, mc) -> ClientEvents.join(handler, mc));
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> ClientEvents.disconnect(handler));
         // Never leave a key stuck down when the world goes away.
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> {
             Keys.releaseAll();
             if (server != null) server.stop();
         });
-        ClientReceiveMessageEvents.CHAT.register((msg, signed, sender, params, ts) ->
-                ChatLog.add("chat", sender == null ? null : sender.name(), msg.getString()));
-        ClientReceiveMessageEvents.GAME.register((msg, overlay) ->
-                ChatLog.add(overlay ? "actionbar" : "system", null, msg.getString()));
+        ClientReceiveMessageEvents.CHAT.register((msg, signed, sender, params, ts) -> {
+            ChatLog.add("chat", sender == null ? null : sender.name(), msg.getString());
+            ClientEvents.chat("chat", sender == null ? null : sender.name(), sender == null ? null : sender.id().toString(),
+                    msg.getString(), signed == null ? null : signed.signature());
+        });
+        ClientReceiveMessageEvents.GAME.register((msg, overlay) -> {
+            ChatLog.add(overlay ? "actionbar" : "system", null, msg.getString());
+            if (!overlay) ClientEvents.chat("system", null, null, msg.getString(), null);
+        });
 
         initPlugins();
 
@@ -57,5 +66,6 @@ public final class LocalApiMod implements ClientModInitializer {
         }
     }
 }
+
 
 

@@ -18,7 +18,7 @@ public final class Config {
     public int frameBudgetMs = 4;
     /** Worker threads for HTTP I/O (never the game thread). */
     public int httpThreads = 4;
-    /** Max simultaneously open plugin streams (each has its own writer thread). */
+    /** Max simultaneously open core/plugin streams (each has its own writer thread). */
     public int maxStreams = 8;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -54,4 +54,5 @@ public final class Config {
         return c;
     }
 }
+
 

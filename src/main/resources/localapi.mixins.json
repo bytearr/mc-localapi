@@ -8,7 +8,9 @@
     "KeyMappingAccessor",
     "ContainerScreenAccessor",
     "BossHealthOverlayAccessor",
-    "StatsCounterAccessor"
+    "StatsCounterAccessor",
+    "ClientPacketEventsMixin",
+    "ClientActionEventsMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -30,7 +30,10 @@ public final class StreamConnection implements StreamSink {
     private final AtomicLong dropped = new AtomicLong();
     private final List<Runnable> closers = new ArrayList<>();
     private volatile boolean open = true;
+    private volatile boolean aborted;
     private boolean closersRun;
+    private volatile HttpExchange exchange;
+    private volatile Thread writerThread;
 
     public static boolean tryAcquire(int max) {
         while (true) {
@@ -84,15 +87,29 @@ public final class StreamConnection implements StreamSink {
         if (runNow) r.run();
     }
 
+    /** Server shutdown: abandon pending frames and unblock a slow network writer. */
+    void abort() {
+        aborted = true;
+        close();
+        queue.clear();
+        HttpExchange current = exchange;
+        if (current != null) current.close();
+        Thread writer = writerThread;
+        if (writer != null) writer.interrupt();
+    }
+
     // ---- HTTP side
 
     /** Sends headers and starts the writer thread. Caller must NOT close the exchange. */
     public void start(HttpExchange ex, String path) throws IOException {
+        if (aborted) throw new IOException("stream aborted");
+        exchange = ex;
         ex.getResponseHeaders().set("Content-Type", "application/x-ndjson; charset=utf-8");
         ex.getResponseHeaders().set("Cache-Control", "no-store");
         ex.sendResponseHeaders(200, 0); // length 0 = chunked, ends when the exchange closes
         Thread t = new Thread(() -> writer(ex, path), "localapi-stream-" + NAMES.incrementAndGet());
         t.setDaemon(true);
+        writerThread = t;
         t.start();
     }
 
@@ -101,6 +118,7 @@ public final class StreamConnection implements StreamSink {
             JsonObject hello = new JsonObject();
             hello.addProperty("type", "hello");
             hello.addProperty("path", path);
+            if (path.equals("/events")) hello.addProperty("resync", true);
             hello.addProperty("t", System.currentTimeMillis());
             write(out, GSON.toJson(hello));
             long lastBeat = System.currentTimeMillis();
@@ -108,9 +126,8 @@ public final class StreamConnection implements StreamSink {
                 String s = queue.poll(250, java.util.concurrent.TimeUnit.MILLISECONDS);
                 if (s != null) {
                     write(out, s);
-                    continue;
                 }
-                if (!open) break; // closed and drained
+                if (!open && queue.isEmpty()) break; // closed and drained
                 long now = System.currentTimeMillis();
                 if (now - lastBeat >= HEARTBEAT_MS) {
                     lastBeat = now;
@@ -138,4 +155,5 @@ public final class StreamConnection implements StreamSink {
         out.flush();
     }
 }
+
 

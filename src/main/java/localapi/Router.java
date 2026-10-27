@@ -70,6 +70,8 @@ public final class Router {
         get("/environment", r -> LiveData.environment(needLevel(), r));
         get("/scoreboard", r -> LiveData.scoreboard(needLevel().getScoreboard(), mc().level.registryAccess()));
         get("/bossbars", r -> { needPlayer(); return LiveData.bossbars(mc()); });
+        get("/advancements", r -> ProgressData.advancements(needPlayer().connection.getAdvancements()));
+        get("/stats", r -> ProgressData.statistics(needPlayer().getStats()));
         get("/keys", Router::keys);
         get("/chat/log", Router::chatLog);
         get("/routes", r -> {
@@ -135,6 +137,8 @@ public final class Router {
         doc("/environment", "Live biome and lighting (loaded chunks only)", "x:integer!", "y:integer!", "z:integer!");
         doc("/scoreboard", "Client-known objectives, scores and teams");
         doc("/bossbars", "Active client boss bars");
+        doc("/advancements", "Client-known advancements and received criterion progress");
+        doc("/stats", "Counters currently present in the client statistics map");
         doc("/keys", "All keybinds and their state");
         doc("/chat/log", "Received chat and system messages", "since:integer", "limit:integer");
         doc("/routes", "Plain list of core routes");

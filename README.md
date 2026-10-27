@@ -83,10 +83,42 @@ berücksichtigt, einfacher ist es sie auszuschalten.
 | `GET /environment?x=&y=&z=` | Biom und Sky-/Block-Licht am geladenen Ort; ungeladen explizit `loaded:false` |
 | `GET /scoreboard` | aktuell clientbekannte Objectives, Scores, Display-Slots und Teams |
 | `GET /bossbars` | aktive Bossbars im Client |
+| `GET /advancements` | clientbekannte Erfolge und übermittelter Fortschritt pro Kriterium |
+| `GET /stats` | tatsächlich im Client vorhandene Statistikzähler |
 | `GET /block?x=&y=&z=` | Block + Blockstate |
 | `GET /blocks?x1=&y1=&z1=&x2=&y2=&z2=&include_air=0` | Region (max 32768 Blöcke) als Palette + `[x,y,z,idx]` |
 | `GET /chat/log?since=0` | empfangene Chat-/System-Nachrichten, `since` = zuletzt gesehene id |
 | `GET /routes` | Liste aller Routen |
+
+## Erfolge und Statistiken
+
+`GET /advancements` liefert `{advancements:[...]}` aus dem aktuellen Advancement-Baum der Verbindung.
+Jeder Eintrag enthält `id`, gegebenenfalls `parent`, `title` und `description`, sowie `requirements`
+und `progress_known`. Nicht vom Server bekanntgemachte Erfolge fehlen vollständig. Ohne empfangenen
+Fortschritt ist `progress_known:false`; `done`, `progress` und `criteria` fehlen dann, statt einen
+unerreichten Erfolg vorzutäuschen.
+
+Bei bekanntem Fortschritt enthält der Eintrag `done`, `progress` (0–1) und `criteria:{name:boolean}`.
+Ein Kriterium ist erfüllt oder offen; Vanilla liefert keinen Zwischenzähler innerhalb eines Kriteriums.
+Die äußere `requirements`-Liste ist UND-verknüpft, jede innere Liste ODER-verknüpft. Der Gesamtfortschritt
+zählt erfüllte Anforderungsgruppen, nicht einfach erfüllte Kriterien. Kriteriennamen stammen aus dem
+Clientfortschritt; serverseitige Triggerbedingungen werden nicht rekonstruiert. Auch Widerrufe und
+entfernte Erfolge werden beim nächsten Lesen berücksichtigt.
+
+`GET /stats` liefert `{stats:[{type,id,value},...]}`. Es werden nur Einträge aus dem tatsächlichen
+Vanilla-Statistikbestand ausgegeben. Ein fehlender Zähler ist **nicht** null; ein ausdrücklich vorhandener
+Nullwert wird ausgegeben. Typen umfassen `minecraft:mined`, `minecraft:used`, `minecraft:crafted`,
+`minecraft:killed` und `minecraft:custom` sowie weitere vorhandene Typen wie aufgehoben/weggeworfen.
+`used` entspricht Vanillas Benutzungszähler, nicht einem separat berechneten Materialverbrauch.
+Allgemeine IDs sind beispielsweise `minecraft:play_time`, `minecraft:deaths` und `minecraft:walk_one_cm`.
+`value` bleibt der rohe Vanilla-Ganzzahlwert: Spielzeit in Spielticks (normal 20/s), Strecken in Zentimetern;
+andere Zähler behalten ihre jeweilige Vanilla-Einheit.
+
+Beide Endpunkte lesen auf dem Game-Thread live den Clientbestand, ohne eigene Speicherung, Ereignislog,
+Hintergrundabfrage oder automatische Serveranfrage. Statistiken können bis zur Vanilla-Synchronisierung
+(z. B. beim Öffnen des Statistikbildschirms) fehlen oder den zuletzt empfangenen Wert enthalten.
+Die Antwort behauptet keinen frisch abgefragten Serverstand. Ohne aktive Welt liefern beide Routen 409.
+Diese Ansichten sind unabhängig vom geplanten NDJSON-Stream und Session-Journal.
 
 ## Live-Daten und optionale Details
 
@@ -198,7 +230,7 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 ## Tests
 
 Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
-Plugin-Harness sowie `LiveDataHarness` gegen echte Minecraft-26.3-Datenobjekte aus
+Plugin-Harness sowie `LiveDataHarness` und `ProgressDataHarness` gegen echte Minecraft-26.3-Datenobjekte aus
 (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
 Der HTTP-Test verwendet einen freien lokalen Port; der Plugin-Harness verwendet Port 25581.
 

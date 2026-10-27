@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "voicetranscript",
+  "version": "1.5.0+26.3",
+  "name": "Voice Transcript",
+  "description": "Live captions from Simple Voice Chat with local Whisper. Language follows the speaker.",
+  "authors": [
+    "VoiceTranscriptDev"
+  ],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.voicetranscript.VoiceTranscriptClient"
+    ],
+    "voicechat": [
+      "com.voicetranscript.voice.TranscriptVoicePlugin"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*",
+    "voicechat_api": ">=2.6.0"
+  },
+  "jars": [
+    {
+      "file": "META-INF/jars/whisper-jni-1.7.1.jar"
+    }
+  ]
+}

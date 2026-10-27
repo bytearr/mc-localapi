@@ -1,0 +1,8 @@
+{
+  "id": "captions",
+  "name": "Captions",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "Live captions of Simple Voice Chat speakers (other players and your own mic) on the HUD. Speech recognition runs locally with whisper.cpp on the CPU. Needs the voice plugin as audio source.",
+  "entrypoint": "captions.CaptionsPlugin"
+}

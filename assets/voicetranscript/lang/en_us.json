@@ -1,0 +1,12 @@
+{
+  "key.category.voicetranscript.general": "Voice Transcript",
+  "key.voicetranscript.toggle_hud": "Cycle Transcript HUD Mode",
+  "key.voicetranscript.toggle_mode": "Cycle Transcript HUD Mode",
+  "key.voicetranscript.cycle_model": "Cycle Whisper Model",
+  "category.voicetranscript": "Voice Transcript",
+  "message.voicetranscript.hud_mode": "Transcript HUD: %s",
+  "message.voicetranscript.model_switched": "Whisper Model: %s",
+  "message.voicetranscript.model_loading": "Loading Whisper Model: %s...",
+  "message.voicetranscript.model_ready": "Whisper Model Ready: %s",
+  "message.voicetranscript.model_downloading": "Downloading Whisper Model (%s)..."
+}

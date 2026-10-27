@@ -1,0 +1,33 @@
+{
+  "functions": {
+    "echo": {
+      "enabled": false,
+      "path": "/my/echo"
+    },
+    "boom": {
+      "enabled": true,
+      "path": "/my/boom"
+    },
+    "gt": {
+      "enabled": true,
+      "path": "/my/gt"
+    },
+    "needs": {
+      "enabled": true,
+      "path": "/my/needs"
+    },
+    "ticker": {
+      "enabled": true,
+      "path": "/my/ticker"
+    },
+    "badopen": {
+      "enabled": true,
+      "path": "/my/badopen"
+    }
+  },
+  "options": {
+    "width": 300,
+    "fade": 2.5,
+    "mode": "OFF"
+  }
+}

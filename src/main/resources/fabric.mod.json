@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "localapi",
+  "version": "1.0.0",
+  "name": "Local API",
+  "description": "Turns the running client into a localhost HTTP/JSON API so external programs (AutoHotkey, scripts) can read state and drive the player. Has an in-game UI and a plugin system.",
+  "authors": ["byte"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["localapi.LocalApiMod"],
+    "voicechat": ["localapi.voice.VoiceBridge"],
+    "modmenu": ["localapi.ui.ModMenuEntry"]
+  },
+  "mixins": ["localapi.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

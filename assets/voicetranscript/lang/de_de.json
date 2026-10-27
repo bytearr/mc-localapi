@@ -1,0 +1,12 @@
+{
+  "key.category.voicetranscript.general": "Voice Transcript",
+  "key.voicetranscript.toggle_hud": "Transkriptanzeige wechseln",
+  "key.voicetranscript.toggle_mode": "Transkriptanzeige wechseln",
+  "key.voicetranscript.cycle_model": "Whisper-Modell wechseln",
+  "category.voicetranscript": "Voice Transcript",
+  "message.voicetranscript.hud_mode": "Transkriptanzeige: %s",
+  "message.voicetranscript.model_switched": "Whisper-Modell: %s",
+  "message.voicetranscript.model_loading": "Whisper-Modell wird geladen: %s...",
+  "message.voicetranscript.model_ready": "Whisper-Modell bereit: %s",
+  "message.voicetranscript.model_downloading": "Whisper-Modell wird heruntergeladen (%s)..."
+}

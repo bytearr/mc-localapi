@@ -1,0 +1,10 @@
+build/
+*.class
+build-minecraft.txt
+.idea/
+.vscode/
+
+libs/
+
+
+plugins/captions/test/work/

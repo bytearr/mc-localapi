@@ -1,0 +1,10 @@
+{
+  "id": "voice",
+  "name": "Voice Chat bridge",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "Reference plugin: who is speaking (voice.speakers) and a live stream of received voice frames (voice.stream). Raw PCM only, no speech recognition.",
+  "entrypoint": "refvoice.VoiceRefPlugin",
+  "voicechatPlugin": "refvoice.VoiceHooks",
+  "requires": ["voicechat"]
+}

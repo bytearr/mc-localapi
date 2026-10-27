@@ -10,7 +10,10 @@
     "BossHealthOverlayAccessor",
     "StatsCounterAccessor",
     "ClientPacketEventsMixin",
-    "ClientActionEventsMixin"
+    "ClientActionEventsMixin",
+    "EditBoxAccessor",
+    "ScreenRevisionMixin",
+    "GuiScreenRevisionMixin"
   ],
   "injectors": {
     "defaultRequire": 1

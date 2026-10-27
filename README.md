@@ -92,6 +92,43 @@ berücksichtigt, einfacher ist es sie auszuschalten.
 | `GET /chat/log?since=0` | empfangene Chat-/System-Nachrichten, `since` = zuletzt gesehene id |
 | `GET /routes` | Liste aller Routen |
 
+## Widget-Aktionen
+
+`GET /screen` behält seine bisherigen Felder und ergänzt bei offenem Screen `revision` sowie pro
+Widget `ref`, `supported` und `action` (`activate`, `set_text` oder `null`). Beide Referenzen sind opaque:
+immer die Strings aus der Antwort verwenden, keine Indizes oder Bildschirmkoordinaten ableiten.
+Aktuell unterstützt: normale `Button.Plain`-Buttons aus dem Vanilla-Button-Builder und die exakte
+Vanilla-Klasse `EditBox`. Eigene Unterklassen, Icon-/Cycle-Buttons, Slider, Listen und verschachtelte
+Controls werden nicht automatisch bedient. Nicht unterstützte direkt gelistete Controls melden
+`supported:false` und `unsupported_reason:"unsupported_widget_type"`.
+
+- `POST /screen/activate {"revision":"…","ref":"…"}` fokussiert den unterstützten Button und ruft
+  seine normale Aktivierungsfunktion mit Enter ohne Modifikatortasten auf. Es werden keine
+  Bildschirmkoordinaten geklickt und keine zusätzlichen Enter-/Chat-Sendeaktionen ausgeführt.
+- `POST /screen/text {"revision":"…","ref":"…","text":"neuer Inhalt"}` fokussiert das Feld und ersetzt
+  seinen gesamten Text über `EditBox.setValue`, einschließlich des normalen Responders. Ein leerer String
+  leert das Feld. Es gibt kein automatisches Bestätigen/Absenden. Bei EditBoxen zeigt `/screen` außerdem
+  den aktuellen `value`, `max_length`, `editable` und `focused`.
+
+Alle Pflichtparameter müssen Strings sein. Zeichen, die Vanilla beim Einfügen entfernen würde,
+Zeilenumbrüche, kaputte UTF-16-Sequenzen und zu lange Eingaben werden mit 400 abgewiesen; es wird
+nicht still gekürzt. `max_length` zählt wie Vanilla UTF-16-Codeeinheiten. Die Validierung des Screens
+im Responder bleibt wirksam: die Antwort enthält den resultierenden `value` und `accepted`, ob er dem
+angefragten Text entspricht. Das ist keine Zusage, dass der Screen den Inhalt fachlich akzeptiert oder
+bereits an den Server übermittelt hat.
+
+Screenwechsel, Overlaywechsel, Neuinitialisierung, Resize, Widget-Neuaufbau oder eine geänderte
+Child-Liste machen alte Referenzen ungültig. Unverändertes wiederholtes Lesen behält die Revision.
+Vor jeder Aktion wird Screenidentität, Revision, Widgetzugehörigkeit und active/visible geprüft — und
+nach dem Fokussieren nochmals. Ungültige/veraltete Referenzen, verdeckter Screen oder gesperrte Felder
+liefern 409. Eine nicht unterstützte Aktion liefert 400. Kein Klick auf einen inzwischen anderen Screen.
+
+Die Antwort enthält `performed:true` und `screen_changed` (Screenidentität gewechselt oder nun durch
+Overlay verdeckt). **Eine ausgeführte Aktion verbraucht alle Referenzen dieser Revision**, auch wenn
+nur ihr Callback scheitert. Vor der nächsten Aktion wieder `/screen` lesen. So kann ein Retry mit
+alten Referenzen keinen zweiten Klick auslösen. Alte `/screen/close`- und Container-Endpunkte bleiben
+unverändert; diese neue Referenzprüfung gilt für die beiden neuen Widget-Aktionen.
+
 ## Live-Stream und Session-Journal
 
 `GET /events` ist ein authentifizierter NDJSON-Stream (eine JSON-Zeile pro Frame), kein gewöhnlicher
@@ -293,7 +330,7 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 ## Tests
 
 Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
-Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness` und `SessionEventsHarness` gegen echte Minecraft-26.3-Datenobjekte aus
+Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness` und `ScreenWidgetsHarness` gegen echte Minecraft-26.3-Datenobjekte aus
 (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
 Die HTTP-Tests verwenden freie lokale Ports; der Plugin-Harness verwendet Port 25581.
 

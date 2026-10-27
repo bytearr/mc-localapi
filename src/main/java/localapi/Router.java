@@ -91,6 +91,8 @@ public final class Router {
         post("/player/look_at", Router::lookAt);
         post("/container/click", Router::containerClick);
         post("/screen/close", Router::screenClose);
+        post("/screen/activate", r -> widgetAction(r, false));
+        post("/screen/text", r -> widgetAction(r, true));
         post("/chat", Router::chatSend);
         post("/chat/echo", r -> {
             Minecraft mc = Minecraft.getInstance();
@@ -155,6 +157,8 @@ public final class Router {
         doc("/player/look_at", "Look at a point", "x:number!", "y:number!", "z:number!");
         doc("/container/click", "Click a slot of the open menu", "slot:integer!", "button:integer",
                 "type:string (PICKUP QUICK_MOVE SWAP CLONE THROW QUICK_CRAFT PICKUP_ALL)", "container_id:integer");
+        doc("/screen/activate", "Activate a supported widget on the inspected screen", "revision:string!", "ref:string!");
+        doc("/screen/text", "Replace a supported text field value", "revision:string!", "ref:string!", "text:string!");
         doc("/screen/close", "Close the open container or screen");
         doc("/chat", "Send a chat message or a /command", "text:string!");
         doc("/chat/echo", "Show a local-only message", "text:string!");
@@ -374,12 +378,18 @@ public final class Router {
         return o;
     }
 
+    private static Object widgetAction(Request request, boolean text) {
+        return ScreenWidgets.INSTANCE.perform(request, () -> {
+            return mc().gui.overlay() == null ? mc().gui.screen() : null;
+        }, text);
+    }
+
     private static Object screen(Request r) {
         Minecraft mc = mc();
         Screen s = mc.gui.screen();
         JsonObject o = new JsonObject();
         o.addProperty("open", s != null);
-        if (s == null) return o;
+        if (s == null) { ScreenWidgets.invalidate(); return o; }
         o.addProperty("class", s.getClass().getName());
         o.addProperty("title", s.getTitle().getString());
         o.addProperty("is_container", s instanceof AbstractContainerScreen<?>);
@@ -400,6 +410,7 @@ public final class Router {
                 w.add(j);
             }
         }
+        ScreenWidgets.INSTANCE.describe(s, o, w);
         o.add("widgets", w);
         if (s instanceof AbstractContainerScreen<?>) o.add("container", (JsonElement) container(r));
         return o;

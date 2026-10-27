@@ -1,7 +1,7 @@
 {
   "approved": {
-    "dep.jar": "62120fb360804b593a809af872db47d3dd6d76914d6cc44bb2c6e7d239a682a6",
-    "echo.jar": "9bda91d22f3b2849811994cda1d0b0776adadce8c37bb0782dce2ee9cbd0c7e7",
-    "missingclass.jar": "c7e91ead169ac629a89e90b0a1c472cfa18ef5a95ac40bc006f39d56558bfc8c"
+    "dep.jar": "06c812b01bdcf9be0ff1f89490c51da965483bfb43d786f0c6d00d1f34bedb38",
+    "echo.jar": "b105b2baa3925076c709a94fbf8bfd8f6bddb6bde79b093f4a8a1935291e6b85",
+    "missingclass.jar": "6879b83b8d5802132ebf455f6792e27dde6a9bd8f8c7d1acdeb1a39c31e3326e"
   }
 }

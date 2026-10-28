@@ -46,12 +46,19 @@ public final class Router {
     @FunctionalInterface
     interface Handler { Object handle(Request r) throws Exception; }
 
-    private record Route(boolean mutating, Handler h) {}
+    private record Route(boolean mutating, boolean invalidatesGameState, Handler h) {}
 
     private static final Map<String, Route> ROUTES = new LinkedHashMap<>();
+    private static final Map<String, Route> POST_OVERRIDES = new LinkedHashMap<>();
 
-    private static void get(String path, Handler h) { ROUTES.put(path, new Route(false, h)); }
-    private static void post(String path, Handler h) { ROUTES.put(path, new Route(true, h)); }
+    private static void get(String path, Handler h) { ROUTES.put(path, new Route(false, false, h)); }
+    private static void post(String path, Handler h) { ROUTES.put(path, new Route(true, true, h)); }
+
+    // POST authorization and game-state invalidation are independent.
+    private static void postWithoutInvalidation(String path, Handler h) {
+        var target = ROUTES.containsKey(path) && !ROUTES.get(path).mutating ? POST_OVERRIDES : ROUTES;
+        target.put(path, new Route(true, false, h));
+    }
 
     static {
         // ---- read ----
@@ -61,17 +68,28 @@ public final class Router {
         get("/target", Router::target);
         get("/hand", Router::hand);
         get("/inventory", Router::inventory);
+        get("/item/icon", r -> ItemIcons.read(r, mc()));
         get("/container", Router::container);
         get("/screen", Router::screen);
         get("/entities", Router::entities);
         get("/players", Router::players);
         get("/block", Router::block);
         get("/blocks", Router::blocks);
+        get("/surface", r -> SurfaceData.read(needLevel(), r));
         get("/environment", r -> LiveData.environment(needLevel(), r));
         get("/scoreboard", r -> LiveData.scoreboard(needLevel().getScoreboard(), mc().level.registryAccess()));
         get("/bossbars", r -> { needPlayer(); return LiveData.bossbars(mc()); });
         get("/advancements", r -> ProgressData.advancements(needPlayer().connection.getAdvancements()));
-        get("/stats", r -> ProgressData.statistics(needPlayer().getStats()));
+        get("/recipes", r -> RecipeData.list(r, RecipeData.live(mc()), net.minecraft.world.item.crafting.display.SlotDisplayContext.fromLevel(needLevel()), ScreenWidgets.INSTANCE));
+        get("/stats", r -> {
+            JsonObject out = ProgressData.statistics(needPlayer().getStats());
+            out.addProperty("received", StatsSync.received(mc().getConnection())); return out;
+        });
+        postWithoutInvalidation("/stats/sync", r -> StatsSync.request(mc().getConnection()));
+        get("/options", r -> OptionsData.read(mc()));
+        postWithoutInvalidation("/options", r -> OptionsData.write(r, mc()));
+        get("/mods", r -> ModData.list(FabricLoader.getInstance().getAllMods()));
+        get("/mod/icon", r -> java.util.concurrent.CompletableFuture.supplyAsync(() -> ModData.icon(r, FabricLoader.getInstance().getAllMods())));
         get("/journal", r -> SessionEvents.INSTANCE.journal(r));
         get("/events", r -> { throw new HttpError(400, "/events is an NDJSON stream; open it directly with GET"); });
         get("/keys", Router::keys);
@@ -79,8 +97,15 @@ public final class Router {
         get("/routes", r -> {
             JsonArray a = new JsonArray();
             ROUTES.forEach((k, v) -> a.add((v.mutating ? "POST " : "GET  ") + k));
+            POST_OVERRIDES.keySet().forEach(k -> a.add("POST " + k));
             return a;
         });
+        get("/hud/widgets", r -> { needPlayer(); return HudWidgets.INSTANCE.list(r); });
+        postWithoutInvalidation("/hud/owner/create", r -> { needPlayer(); return HudWidgets.INSTANCE.create(r); });
+        postWithoutInvalidation("/hud/owner/renew", r -> { needPlayer(); return HudWidgets.INSTANCE.renew(r); });
+        postWithoutInvalidation("/hud/owner/release", r -> HudWidgets.INSTANCE.release(r));
+        postWithoutInvalidation("/hud/widgets/put", r -> { needPlayer(); return HudWidgets.INSTANCE.put(r); });
+        postWithoutInvalidation("/hud/widgets/remove", r -> HudWidgets.INSTANCE.remove(r));
         // ---- act ----
         post("/key/down", r -> { Keys.down(r.reqStr("key")); return heldJson(); });
         post("/key/up", r -> { Keys.up(r.reqStr("key")); return heldJson(); });
@@ -91,6 +116,9 @@ public final class Router {
         post("/player/look_at", Router::lookAt);
         post("/container/click", Router::containerClick);
         post("/screen/close", Router::screenClose);
+        post("/recipes/select", r -> RecipeData.select(r, mc()));
+        post("/screen/activate", r -> widgetAction(r, false));
+        post("/screen/text", r -> widgetAction(r, true));
         post("/chat", Router::chatSend);
         post("/chat/echo", r -> {
             Minecraft mc = Minecraft.getInstance();
@@ -98,7 +126,8 @@ public final class Router {
             return ok();
         });
         post("/screenshot", Router::screenshot);
-        post("/batch", r -> BatchRequests.dispatch(r, Router::dispatch));
+        // Each dispatched child supplies its own invalidation, including in mixed batches.
+        postWithoutInvalidation("/batch", r -> BatchRequests.dispatch(r, Router::dispatch));
     }
 
     private Router() {}
@@ -136,10 +165,19 @@ public final class Router {
         doc("/block", "Block and block state at a position", "x:integer!", "y:integer!", "z:integer!");
         doc("/blocks", "Region of blocks (max 32768)", "x1:integer!", "y1:integer!", "z1:integer!",
                 "x2:integer!", "y2:integer!", "z2:integer!", "include_air:boolean");
+        doc("/item/icon", "Fresh inventory icon PNG, exactly one of id or slot", "id:string", "slot:integer");
+        doc("/surface", "Live highest non-air blocks in loaded chunks", "chunk_x1:integer!", "chunk_z1:integer!", "chunk_x2:integer!", "chunk_z2:integer!");
         doc("/environment", "Live biome and lighting (loaded chunks only)", "x:integer!", "y:integer!", "z:integer!");
         doc("/scoreboard", "Client-known objectives, scores and teams");
         doc("/bossbars", "Active client boss bars");
         doc("/advancements", "Client-known advancements and received criterion progress");
+        doc("/recipes", "Client-known recipe displays and live craftability", "after:integer", "limit:integer", "item_details:boolean");
+        doc("/recipes/select", "Request normal recipe-book placement on the inspected menu", "revision:string!", "container_id:integer!", "id:integer!", "all:boolean");
+        doc("/stats/sync", "Request the server statistics packet without waiting");
+        doc("/options", "Live vanilla options and their own ranges and labels");
+        DOCS.put("POST /options", new RouteDoc("POST", "/options", "Change one vanilla option or key binding", List.of("id:string!", "value:json!")));
+        doc("/mods", "Loaded Fabric mods and public metadata");
+        doc("/mod/icon", "Metadata-selected mod PNG, no cache", "id:string!");
         doc("/stats", "Counters currently present in the client statistics map");
         doc("/events", "Transient NDJSON invalidations; fetch current state from live routes");
         doc("/journal", "Historical facts for this session, never current state", "since:integer", "limit:integer", "session:string");
@@ -155,6 +193,14 @@ public final class Router {
         doc("/player/look_at", "Look at a point", "x:number!", "y:number!", "z:number!");
         doc("/container/click", "Click a slot of the open menu", "slot:integer!", "button:integer",
                 "type:string (PICKUP QUICK_MOVE SWAP CLONE THROW QUICK_CRAFT PICKUP_ALL)", "container_id:integer");
+        doc("/screen/activate", "Activate a supported widget on the inspected screen", "revision:string!", "ref:string!");
+        doc("/screen/text", "Replace a supported text field value", "revision:string!", "ref:string!", "text:string!");
+        doc("/hud/widgets", "Inspect your live script-owned HUD widgets", "owner:string!");
+        doc("/hud/owner/create", "Create an expiring HUD owner lease", "ttl_ms:integer");
+        doc("/hud/owner/renew", "Renew an existing HUD owner lease", "owner:string!", "ttl_ms:integer");
+        doc("/hud/owner/release", "Remove an owner and all its widgets", "owner:string!");
+        doc("/hud/widgets/put", "Create or replace a widget; does not renew owner lease", "owner:string!", "id:string!", "type:string!", "label:string!", "value:number!", "max:number", "running:boolean", "x:integer", "y:integer", "width:integer", "ttl_ms:integer");
+        doc("/hud/widgets/remove", "Remove a widget owned by this lease", "owner:string!", "id:string!");
         doc("/screen/close", "Close the open container or screen");
         doc("/chat", "Send a chat message or a /command", "text:string!");
         doc("/chat/echo", "Show a local-only message", "text:string!");
@@ -163,7 +209,8 @@ public final class Router {
     }
 
     public static Object dispatch(Request req) throws Exception {
-        Route route = ROUTES.get(normalize(req.path()));
+        String path = normalize(req.path());
+        Route route = req.method().equals("POST") && POST_OVERRIDES.containsKey(path) ? POST_OVERRIDES.get(path) : ROUTES.get(path);
         if (route == null) {
             JsonObject extra = new JsonObject();
             JsonArray a = new JsonArray();
@@ -173,7 +220,7 @@ public final class Router {
         }
         if (route.mutating && !req.method().equals("POST")) throw new HttpError(405, req.path() + " needs POST");
         Object result = route.h.handle(req);
-        if (route.mutating) ClientEvents.invalidate("/state", "/player", "/inventory", "/container", "/screen", "/target", "/hand");
+        if (route.invalidatesGameState) ClientEvents.invalidate("/state", "/player", "/inventory", "/container", "/screen", "/target", "/hand");
         return result;
     }
 
@@ -374,12 +421,18 @@ public final class Router {
         return o;
     }
 
+    private static Object widgetAction(Request request, boolean text) {
+        return ScreenWidgets.INSTANCE.perform(request, () -> {
+            return mc().gui.overlay() == null ? mc().gui.screen() : null;
+        }, text);
+    }
+
     private static Object screen(Request r) {
         Minecraft mc = mc();
         Screen s = mc.gui.screen();
         JsonObject o = new JsonObject();
         o.addProperty("open", s != null);
-        if (s == null) return o;
+        if (s == null) { ScreenWidgets.invalidate(); return o; }
         o.addProperty("class", s.getClass().getName());
         o.addProperty("title", s.getTitle().getString());
         o.addProperty("is_container", s instanceof AbstractContainerScreen<?>);
@@ -400,6 +453,7 @@ public final class Router {
                 w.add(j);
             }
         }
+        ScreenWidgets.INSTANCE.describe(s, o, w);
         o.add("widgets", w);
         if (s instanceof AbstractContainerScreen<?>) o.add("container", (JsonElement) container(r));
         return o;
@@ -475,8 +529,7 @@ public final class Router {
             }
         }
         boolean air = r.bool("include_air", false);
-        List<String> palette = new ArrayList<>();
-        Map<String, Integer> index = new LinkedHashMap<>();
+        BlockPalette palette = new BlockPalette();
         JsonArray rows = new JsonArray();
         BlockPos.MutableBlockPos mp = new BlockPos.MutableBlockPos();
         // Long counters cannot wrap at Integer.MAX_VALUE. Empty height intersections do no work.
@@ -486,16 +539,13 @@ public final class Router {
                     mp.set((int) x, (int) y, (int) z);
                     BlockState st = LiveData.loadedChunk(l, (int) x, (int) z).getBlockState(mp);
                     if (!air && st.isAir()) continue;
-                    String bid = BuiltInRegistries.BLOCK.getKey(st.getBlock()).toString();
-                    int pi = index.computeIfAbsent(bid, k -> { palette.add(k); return palette.size() - 1; });
+                    int pi = palette.add(st, l, mp);
                     JsonArray row = new JsonArray();
                     row.add(x); row.add(y); row.add(z); row.add(pi);
                     rows.add(row);
                 }
         JsonObject o = new JsonObject();
-        JsonArray pal = new JsonArray();
-        palette.forEach(pal::add);
-        o.add("palette", pal);
+        palette.write(o);
         o.add("blocks", rows); // [x, y, z, palette_index]
         return o;
     }

@@ -18,7 +18,9 @@ public final class ClientEvents {
 
     public static void join(ClientPacketListener handler, Minecraft mc) {
         if (connection == handler && SessionEvents.INSTANCE.active()) return;
+        HudWidgets.INSTANCE.clear();
         connection = handler;
+        StatsSync.begin(handler);
         playerStamp = null;
         screenToken = 0;
         SessionEvents.INSTANCE.begin(dimension(mc));
@@ -27,14 +29,23 @@ public final class ClientEvents {
 
     public static void disconnect(ClientPacketListener handler) {
         if (connection != handler) return;
+        HudWidgets.INSTANCE.clear();
         SessionEvents.INSTANCE.end();
+        StatsSync.end(handler);
         connection = null;
         playerStamp = null;
     }
 
-    public static void invalidate(String... paths) { SessionEvents.INSTANCE.invalidate(paths); }
+    public static void invalidate(String... paths) {
+        SessionEvents.INSTANCE.invalidate(paths);
+        for (String path : paths) if (path.equals("/inventory") || path.equals("/container") || path.equals("/screen")) {
+            SessionEvents.INSTANCE.invalidate("/recipes");
+            break;
+        }
+    }
 
     public static void respawn(Minecraft mc) {
+        HudWidgets.INSTANCE.clear();
         SessionEvents.INSTANCE.respawn(dimension(mc));
         playerStamp = null;
         invalidate("/state", "/world", "/player", "/inventory", "/container", "/screen");

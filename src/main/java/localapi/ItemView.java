@@ -34,6 +34,8 @@ final class ItemView {
             return out;
         }
         remaining--;
+        out.add("tooltip", tooltip(stack));
+        EnchantmentData.add(out, stack);
         d.addProperty("available", true);
         d.add("enchantments", enchantments(stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY)));
         d.add("stored_enchantments", enchantments(stack.getOrDefault(DataComponents.STORED_ENCHANTMENTS, ItemEnchantments.EMPTY)));
@@ -96,7 +98,31 @@ final class ItemView {
             JsonObject e = new JsonObject();
             e.addProperty("id", holderId(entry.getKey()));
             e.addProperty("level", entry.getIntValue());
+            e.addProperty("name", net.minecraft.world.item.enchantment.Enchantment.getFullname(entry.getKey(), entry.getIntValue()).getString());
             out.add(e);
+        }
+        return out;
+    }
+
+    private static JsonArray tooltip(ItemStack stack) {
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        var lines = mc == null ? stack.getTooltipLines(net.minecraft.world.item.Item.TooltipContext.EMPTY, null, net.minecraft.world.item.TooltipFlag.NORMAL)
+                : net.minecraft.client.gui.screens.Screen.getTooltipFromItem(mc, stack);
+        return tooltipLines(lines);
+    }
+
+    static JsonArray tooltipLines(java.util.List<net.minecraft.network.chat.Component> lines) {
+        JsonArray out = new JsonArray();
+        for (var line : lines) {
+            JsonObject row = new JsonObject(); row.addProperty("text", line.getString());
+            var color = line.getStyle().getColor(); row.addProperty("color", color == null ? 0xffffff : color.getValue());
+            JsonArray runs = new JsonArray();
+            line.visit((style, text) -> {
+                JsonObject run = new JsonObject(); run.addProperty("text", text);
+                run.addProperty("color", style.getColor() == null ? 0xffffff : style.getColor().getValue());
+                runs.add(run); return java.util.Optional.empty();
+            }, net.minecraft.network.chat.Style.EMPTY);
+            row.add("runs", runs); out.add(row);
         }
         return out;
     }
@@ -108,6 +134,7 @@ final class ItemView {
     static JsonObject effect(MobEffectInstance effect) {
         JsonObject out = new JsonObject();
         out.addProperty("id", holderId(effect.getEffect()));
+        out.addProperty("name", effect.getEffect().value().getDisplayName().getString());
         out.addProperty("amplifier", effect.getAmplifier());
         out.addProperty("infinite", effect.isInfiniteDuration());
         if (effect.isInfiniteDuration()) out.add("duration_ticks", JsonNull.INSTANCE);

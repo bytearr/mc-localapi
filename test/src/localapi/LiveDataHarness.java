@@ -146,6 +146,7 @@ public final class LiveDataHarness {
         var registries = VanillaRegistries.createWorldLookup();
         net.minecraft.core.registries.BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(registries)
                 .forEach(net.minecraft.core.component.DataComponentInitializers.PendingComponents::apply);
+        PresentationHarness.bindEnchantmentTags(registries);
         items(registries);
         effects();
         scoreboard(registries);

@@ -122,7 +122,12 @@ public final class ApiServer {
             }
 
             Dispatcher.Outcome out = Dispatcher.call(req, cfg.timeoutMs);
-            send(ex, out.status(), toJson(out));
+            if (out.png() != null) {
+                ex.getResponseHeaders().set("Content-Type", "image/png");
+                ex.getResponseHeaders().set("Cache-Control", "no-store");
+                ex.sendResponseHeaders(200, out.png().length);
+                ex.getResponseBody().write(out.png());
+            } else send(ex, out.status(), toJson(out));
         } catch (Throwable t) {
             LocalApiMod.LOG.warn("[localapi] request error", t);
             try { send(ex, 500, error("internal error")); } catch (Throwable ignored) {}

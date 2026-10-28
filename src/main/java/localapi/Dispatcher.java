@@ -36,7 +36,8 @@ public final class Dispatcher {
 
     private Dispatcher() {}
 
-    public record Outcome(int status, JsonElement data, String error, JsonObject extra) {
+    public record Outcome(int status, JsonElement data, String error, JsonObject extra, byte[] png) {
+        public Outcome(int status, JsonElement data, String error, JsonObject extra) { this(status, data, error, extra, null); }
         public boolean ok() { return error == null; }
 
         static Outcome ok(JsonElement d) { return new Outcome(200, d == null ? JsonNull.INSTANCE : d, null, null); }
@@ -104,6 +105,7 @@ public final class Dispatcher {
     private static Outcome await(CompletableFuture<?> f, int timeoutMs, PluginInfo info, String path) {
         try {
             Object r = f.get(timeoutMs, TimeUnit.MILLISECONDS);
+            if (r instanceof ItemIcons.Png png) return new Outcome(200, JsonNull.INSTANCE, null, null, png.bytes());
             JsonElement je = r == null ? JsonNull.INSTANCE : r instanceof JsonElement e ? e : GSON.toJsonTree(r);
             return Outcome.ok(je);
         } catch (TimeoutException te) {

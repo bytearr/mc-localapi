@@ -73,6 +73,7 @@ final class LiveData {
         if (chunk == null) {
             out.addProperty("reason", "chunk_not_loaded");
             out.add("biome", JsonNull.INSTANCE);
+            out.add("biome_name", JsonNull.INSTANCE);
             out.add("sky_light", JsonNull.INSTANCE);
             out.add("block_light", JsonNull.INSTANCE);
             return out;
@@ -80,6 +81,7 @@ final class LiveData {
         if (level.isOutsideBuildHeight(pos)) throw new HttpError(400, "y is outside the build height");
         // Read the stored quart biome directly: biome blending can sample unloaded neighbours.
         out.addProperty("biome", ItemView.holderId(chunk.getNoiseBiome(pos.getX() >> 2, pos.getY() >> 2, pos.getZ() >> 2)));
+        out.addProperty("biome_name", ClientNames.biome(out.get("biome").isJsonNull() ? null : out.get("biome").getAsString()));
         out.addProperty("biome_sampling", "quart");
         out.addProperty("sky_light", level.getBrightness(LightLayer.SKY, pos));
         out.addProperty("block_light", level.getBrightness(LightLayer.BLOCK, pos));

@@ -87,12 +87,254 @@ berücksichtigt, einfacher ist es sie auszuschalten.
 | `GET /bossbars` | aktive Bossbars im Client |
 | `GET /advancements` | clientbekannte Erfolge und übermittelter Fortschritt pro Kriterium |
 | `GET /stats` | tatsächlich im Client vorhandene Statistikzähler |
+| `GET /recipes` | clientbekannte Rezeptanzeigen, Ergebnisse und aktuelle Zutatenverfügbarkeit |
 | `GET /events` | authentifizierter NDJSON-Livestream mit Änderungs-Hinweisen |
 | `GET /journal?since=0&limit=200` | historische Ereignisse der aktuellen/zuletzt beendeten Session |
 | `GET /block?x=&y=&z=` | Block + Blockstate |
 | `GET /blocks?x1=&y1=&z1=&x2=&y2=&z2=&include_air=0` | Region (max 32768 Blöcke) als Palette + `[x,y,z,idx]` |
 | `GET /chat/log?since=0` | empfangene Chat-/System-Nachrichten, `since` = zuletzt gesehene id |
 | `GET /routes` | Liste aller Routen |
+
+## Client-Darstellung und geladene Oberfläche
+
+Alle folgenden Werte kommen aus dem aktuellen Client. Keine Übersetzungstabellen, externen Assets,
+Icon-Dateien, Chunk-Caches oder gespeicherten Oberflächen werden angelegt.
+
+- `/advancements` ergänzt `icon` (Item-ID) nur bei vorhandenem Display. `criteria` bleibt die bisherige
+  Abbildung auf Booleans; `criterion_names` ergänzt ausschließlich bekannte, explizit namespaced IDs
+  aus Biome-, Item-, Block- oder Entity-Type-Registries. Gewöhnliche Triggernamen bleiben ohne Label.
+- Effekte unter `/player` (und in Item-Potion-Details) ergänzen `name`. `/environment` ergänzt
+  `biome_name`; bei ungeladenem Chunk bleiben `biome` und `biome_name` null.
+- `/stats` behält `type`, `id`, den rohen `value` und ergänzt `name` sowie `formatted_value` aus
+  dem Vanilla-Statistikformatter. Spielzeit bleibt beispielsweise zusätzlich als Tickzahl verfügbar.
+- `item_details=true` ergänzt bei nicht leeren, innerhalb des Detail-Limits ausgewerteten Stacks
+  ein `tooltip`-Array. Es verwendet den Vanilla-Inventar-Tooltip für den aktuellen Spieler und die
+  aktuelle Sprache, einschließlich der Einstellung für erweiterte Tooltips. Jede Zeile enthält `text`
+  und `color` (RGB-Zahl); `runs` bewahrt zusätzlich die Textabschnitte mit unterschiedlichen Farben.
+  Enchantment-Objekte ergänzen `name` einschließlich Stufe. Das bestehende Item-`name` bleibt unverändert.
+  Ohne Details oder bei leeren Stacks entsteht kein Tooltip-Feld. Grafische Tooltip-Inhalte wie
+  Bundle-Vorschauen sind keine Textzeilen und werden hier nicht als Bild nachgebaut.
+
+`GET /blocks` behält `palette` als Array von Block-ID-Strings. Das zusätzliche `palette_entries`
+enthält am selben Index `{id,map_color}`. Die RGB-Zahl kommt bei vorhandener Block-Tint aus
+`Minecraft.getBlockColors().getTintSources(state)` und `colorInWorld` am gelesenen Ort: die erste
+aktive Tint-Schicht in Registrierungsreihenfolge. `-1` bedeutet keine Tint. Falls keine Welt-Tint aktiv
+ist, wird eine registrierte Terrain-Particle-Tint berücksichtigt (in 26.3 insbesondere Wasser).
+Ohne aktive Tint bleibt `BlockState.getMapColor(...).col` die Farbe. Derselbe Block-ID-String kann mehrfach auftreten, wenn seine Zustände/Positionen unterschiedliche
+Map-Farben liefern. Die Farbe ist eine Welt-Tint bzw. Materialfarbe, keine Texturprobe oder fertige, schattierte Karte.
+
+`GET /surface?chunk_x1=-8&chunk_z1=-8&chunk_x2=7&chunk_z2=7` liest ein inklusives Rechteck in
+**Chunk-Koordinaten**. Maximal 65536 angefragte Spalten (256 Chunks) pro Request; größere Bereiche
+in mehrere Rechtecke aufteilen. Die Grenze gilt auch für fehlende Chunks. Die Antwort enthält:
+
+- `columns`: `[x,z,y,palette_index]` für den höchsten Nicht-Luft-Block jeder geladenen Spalte,
+  einschließlich Flüssigkeiten, aus der aktuellen `WORLD_SURFACE`-Heightmap.
+- `palette` und `palette_entries`: dasselbe Format wie `/blocks`.
+- `unloaded_chunks`: `[chunk_x,chunk_z]` für ausgelassene Chunks. Sie werden weder geladen noch
+  als Luft ausgegeben; auch ein vollständig ungeladenes Rechteck ist eine erfolgreiche, explizit leere Antwort.
+- `empty_columns`: `[x,z]` für tatsächlich vollständig leere **geladene** Spalten.
+- `requested_columns` und `max_columns`: angefragte Größe und Limit.
+
+`GET /item/icon?id=minecraft:potion` liefert das Standard-Icon eines registrierten Items.
+`GET /item/icon?slot=36` rendert den aktuell vorhandenen Stack im Slot von `player.inventoryMenu`,
+genau wie `/inventory`: 36–44 Hotbar, 9–35 Inventar, 5–8 Rüstung und 45 Offhand (0–4 Crafting).
+Das gilt auch bei geöffneter Truhe; deren `containerMenu` wird nicht gelesen. Außerhalb der Slots dieses
+Spieler-Menüs folgt 400, bei einem leeren Slot 404. Genau einen Parameter verwenden. Der Erfolg ist direkt
+`image/png`, 32×32 Pixel mit Transparenz, **kein JSON/Base64 und keine URL**. Die bestehende Loopback-,
+Host- und `X-Password`-Prüfung gilt weiterhin. `Cache-Control: no-store` verhindert Wiederverwendung.
+
+Der Endpunkt löst das GUI-Modell aus den geladenen Client-Ressourcen auf und rendert es über den
+Vanilla-Item-Atlas in eine frische, nur für diesen Request verwendete Textur. Dadurch werden auch
+Mod-Items und Stack-Tints wie Potion-Farbe und gefärbtes Leder berücksichtigt. Kein Count-/Haltbarkeits-
+Overlay und kein Enchantment-Glint. Unbekannte IDs, leere Slots oder nicht geladene/nicht darstellbare
+Item-Modelle liefern 404 als normale JSON-Fehlerantwort. Ungültige Parameter liefern 400; Slotabfragen
+außerhalb einer Welt 409. Höchstens zwei GPU-Readbacks gleichzeitig, darüber 429. Die temporären GPU-
+Ressourcen werden nach dem Readback freigegeben; es gibt keinen Icon-Cache. PNG-Abfragen sind GET-only
+und nicht innerhalb von `/batch` verfügbar. `/inventory` enthält weiterhin keine eingebetteten Bilder.
+
+## Passende Verzauberungen
+
+Mit `item_details=true` erhalten nicht leere, nicht abgeschnittene Item-Antworten zusätzlich
+`fits:[{id,name,max_level,level}]`. Die Liste verwendet die aktuellen Client-Registries:
+Die Verzauberung muss auf den Stack passen, mit seinen vorhandenen Verzauberungen kompatibel sein
+und unter ihrer Maximalstufe liegen. `level` ist die vorhandene Stufe (sonst 0), `name` der übersetzte
+Name ohne Stufensuffix. Höherstufungen bleiben möglich; Schätze und Flüche werden nicht ausgefiltert.
+Ohne verfügbare Welt-Registry ist `fits` null. Keine Empfehlungen, Kosten oder Amboss-Aktionen.
+
+Bei `STORED_ENCHANTMENTS` kommt `book_targets:[{id,name,level,max_level,slots}]` hinzu.
+`slots` enthält passende, nicht leere Slots des aktuellen `player.inventoryMenu`, mit den Indizes
+von `/inventory`: 5–8 Rüstung, 9–35 Inventar, 36–44 Hotbar, 45 Offhand. Crafting-Slots fehlen.
+Geprüft werden Anwendbarkeit und Kompatibilität, nicht die Möglichkeit einer weiteren Höherstufung.
+Die Daten werden pro Anfrage gelesen und nicht gespeichert.
+
+## Vanilla-Clientoptionen
+
+`GET /options` funktioniert auch ohne Welt und liefert `{options:[...]}`. Jede Zeile hat
+`id`, `name`, `group`, `kind`, `value` und `label`. IDs stammen aus den Vanilla-Übersetzungsschlüsseln,
+Namen und Labels aus der aktuellen Sprache und dem eigenen Optionsformatter.
+Die Gruppen umfassen Video (einschließlich FOV und Vollbildauflösung), Sound, Maus, Chat, Skin,
+Barrierefreiheit, Online, Font, Sprache und alle registrierten Tastenbelegungen einschließlich Debug.
+Skin-Teile werden wie ihre Vanilla-Schalter behandelt. Account-/Freundesverwaltung gehört nicht dazu.
+
+- `kind`: `boolean`, `int`, `double`, `enum`, `language` oder `key`.
+- `value` bleibt in Vanilla-Einheiten; beispielsweise GUI-Skalierung 0 bleibt 0.
+- Ganzzahlbereiche liefern `min`/`max`, dynamische Grenzen werden live gelesen. Slider liefern
+  zusätzlich ihre Vanilla-Position `slider`. Booleans haben keine numerischen Bereichsfelder.
+- Auswahlen liefern `values:[{id,name}]` in Vanilla-Reihenfolge. Java-Enum-IDs sind deren `name()`;
+  Sprache verwendet Sprachcodes, Tasten verwenden Save-Strings wie `key.keyboard.b`.
+
+`POST /options` mit `{"id":"options.gamma","value":0.5}` ändert genau eine Option über
+Vanillas Validator und Setter und ruft `options.save()` auf. Unbekannte IDs liefern 404;
+abgelehnte Werte 400 ohne Änderung. Dynamische Clamp-Validatoren dürfen den Wert wie Vanilla begrenzen;
+die Antwort `{id,value}` enthält den tatsächlich übernommenen Wert. Keine manuelle `options.txt`-Bearbeitung.
+Tastenbelegungen werden gesetzt und die Zuordnung aktualisiert, die Taste wird nicht gedrückt.
+Sprachwechsel verwenden den LanguageManager und den normalen Ressourcen-Reload; die Antwort ergänzt
+`reload_requested`, wartet aber nicht auf dessen Abschluss. Vanilla-seitige Neustart-Anforderungen
+(z. B. Grafik-Backend) bleiben bestehen. Optionsänderungen erzeugen keine pauschale Inventar-/Spielzustandsinvalidierung.
+
+## Installierte Mods
+
+`GET /mods` liefert `{mods:[{id,name,version,description,authors,environment,has_icon}]}`, nach ID sortiert,
+aus allen Fabric-Modcontainern einschließlich eingebauter und verschachtelter Mods. `authors` enthält
+nur Namen, `version` die Friendly-Version. Keine Pfade, Kontaktinformationen oder Custom-Metadaten.
+
+`GET /mod/icon?id=localapi` liest ausschließlich den Iconpfad aus den Mod-Metadaten (128er-Auswahl).
+Erfolg ist direkt `image/png`, ohne JSON/Base64 und mit `Cache-Control: no-store`.
+Unbekannter Mod, fehlende Datei, falsche PNG-Signatur oder mehr als 1 MiB liefern 404 als JSON.
+Datei-I/O läuft asynchron, ohne Cache oder angelegte Dateien. Die Route ist GET-only, geschützt wie
+andere API-Routen und nicht in `/batch` verfügbar.
+
+## Script-HUD
+
+Timer, Zähler und Fortschrittsbalken sind flüchtige Anzeigen, deren Werte das Script liefert.
+Keine Inventarableitungen, Journal-Einträge, Dateien oder Wegpunkt-Marker. Alle Routen verwenden die
+vorhandene API-Authentifizierung; `owner` ist zusätzlich ein zufälliges Lease-Token. Token nicht zwischen
+Scripts teilen: Es berechtigt zum Lesen und Ändern genau dieses Besitzers (keine eigene Benutzer-Authentifizierung).
+
+| Route | Zweck |
+|---|---|
+| `POST /hud/owner/create` | Lease anlegen, Antwort `{owner,ttl_ms}` |
+| `POST /hud/owner/renew` | bestehende Lease verlängern, `owner` erforderlich |
+| `POST /hud/owner/release` | Lease und alle zugehörigen Widgets sofort entfernen |
+| `GET /hud/widgets?owner=…` | nur die Widgets dieser Lease und Restlaufzeiten lesen |
+| `POST /hud/widgets/put` | Widget über `owner` + `id` anlegen oder vollständig ersetzen |
+| `POST /hud/widgets/remove` | genau dieses Widget entfernen, Antwort `{removed}` |
+
+Leases: `ttl_ms` standardmäßig 10000, erlaubt 1000–30000. Vor Ablauf explizit erneuern (z. B. alle
+3 Sekunden bei 10 Sekunden TTL). Ein abgestürztes Script kann daher höchstens bis zum Lease-Ablauf
+sichtbare Widgets hinterlassen. Bei sauberem Shutdown `/hud/owner/release` aufrufen. Abgelaufene Token
+liefern 404 und lassen sich nicht wiederbeleben. Join, Disconnect, Respawn/Dimensionswechsel und
+Client-Ende verwerfen alle Leases. Danach muss das Script eine neue Lease und neue Widgets anlegen.
+
+Beispiel für ein Widget (`owner` durch das Token ersetzen):
+
+```json
+{"owner":"…","id":"building","type":"progress","label":"Platziert","value":23,"max":100,"x":8,"y":8,"width":180,"ttl_ms":10000}
+```
+
+`type` ist `counter`, `progress` oder `timer`; `id`, `label`, `value` sind Pflichtfelder. `put` ersetzt
+immer den kompletten Eintrag: optionale Felder bekommen wieder ihre Standardwerte. Eine Änderung
+verlängert nur die Widget-TTL, **nicht** die Lease; Lease-Erneuerung verlängert keine Widget-TTL.
+Beide müssen gültig sein. IDs sind innerhalb einer Lease eindeutig; gleiche IDs anderer Scripts bleiben getrennt.
+
+- `counter`: ganzzahliger Wert zwischen −1 Milliarde und +1 Milliarde.
+- `progress`: `0 <= value <= max`, `max` standardmäßig 100 und höchstens 1 Milliarde.
+- `timer`: verbleibende Sekunden, 0 bis 1 Milliarde. `running` standardmäßig `false`; bei `true`
+  zählt die Anzeige anhand einer monotonen Echtzeituhr bis null herunter, auch während Spielpausen.
+  Das Script kann jederzeit den Wert ersetzen. Null löst keine Aktion aus; das Widget bleibt bis zur TTL sichtbar.
+- Widget-`ttl_ms`: 100–60000, Standard 10000. `x`/`y`: 0–10000 GUI-Pixel ab links oben, Standard 8.
+  `width`: 40–400, Standard 180. GUI-Skalierung erfolgt durch Minecraft; bei Resize werden Position und
+  Größe in den sichtbaren Bereich begrenzt. Lange Texte werden abgeschnitten. Bei F1 wird nichts gezeichnet.
+- `id` maximal 64, `label` maximal 128 Zeichen, nicht leer, einzeilig und ohne Formatierungs-Steuercodes.
+
+Maximal 16 Leases, 16 Widgets je Lease und insgesamt 64 Widgets; Überschreitung liefert 429.
+Ungültige Werte liefern 400 und lassen den bisherigen Eintrag stehen. Updates vorhandener IDs sind
+auch bei erreichtem Limit möglich. Überlappung und Anordnung legt das Script fest; spätere Einträge
+werden über früheren gezeichnet. `GET` liefert die aktuelle Timer-Anzeige, Position/Größe wie vom Script
+angegeben und `remaining_ms` begrenzt auf Widget- und Lease-Restlaufzeit. HUD-Daten werden nicht ins
+Session-Journal oder den Event-Stream übernommen. HUD-POSTs lösen keine Spielzustands-Invalidierung aus,
+auch nicht innerhalb von `/batch`; dort invalidieren nur die jeweiligen Spielaktionen. Die Routen zum Anlegen/Ändern/Lesen erfordern eine aktive Welt.
+
+## Rezeptbuch
+
+`GET /recipes?after=-1&limit=100` liest nur die tatsächlich im Client bekannten Rezeptanzeigen.
+Die Antwort enthält `recipes`, `next_after`, `has_more`, `supported_menu`, `menu_kind`, `container_id`
+und bei einem unterstützten offenen Screen dessen `revision`. `limit` ist 1–200; `after` ist eine
+exklusive **Rezeptanzeige-ID**, kein Listenindex. Seiten werden jeweils live gelesen; nach einem
+Rezeptbuch-Update die Aufzählung erneut beginnen. Es gibt keinen gespeicherten Inventar-/Rezeptstand.
+
+Ein Rezept enthält `id` (die vom Server vergebene Display-ID, kein erfundener Recipe-Resource-Name),
+`display_type`, `category`, `highlighted`, `compatible`, `craftable`, `reason`, `results` und `requirements`.
+Shaped-Rezepte ergänzen `width`/`height`. Ergebnisse sind **Anzeigevorschauen**, keine erzeugten Items.
+`results.items` verwendet die bisherigen kompakten Item-Felder; erst `item_details=true` ergänzt Details.
+Es werden höchstens 32 Ergebnisvarianten pro Rezept ausgegeben; `results.truncated` meldet weitere.
+
+Bekannte `requirements.ingredients` enthalten pro benötigter Zutat die möglichen Item-IDs in
+`alternatives`; wiederholte Zutaten bleiben wiederholt. Das ist keine Zuordnung zu Crafting-Slots
+und kein berechneter Restbestand. Die Ausgabe begrenzt Zutaten auf 64 und Alternativen auf 128,
+jeweils mit `truncated`. Nicht übermittelte Anforderungen sind `null`, nicht eine leere Zutatenliste.
+
+`craftable` wird frisch wie im Vanilla-Rezeptbuch aus dem Spielerinventar plus den Crafting-Eingabefeldern
+des aktuellen Menüs berechnet. Ohne unterstützten offenen Screen oder ohne übermittelte Anforderungen
+ist es `null`. `reason` unterscheidet `no_supported_recipe_screen`, `incompatible_menu`,
+`disabled_features`, `requirements_unavailable` und `missing_ingredients`. `craftable:true` sagt nichts
+über freien Inventarplatz, Serverzustand, Brennstoff oder ein bereits fertiges Ergebnis aus.
+
+Unterstützt sind die Vanilla-Rezeptbuch-Screens mit Inventar-Crafting (2×2), Werkbank (3×3), Ofen,
+Schmelzofen oder Räucherofen. Kategorie und Rastergröße müssen passen. Andere Menüs, unter anderem
+Steinsäge/Schmiedetisch und eigene Menüklassen, lösen keine Rezeptplatzierung aus.
+
+`POST /recipes/select {"revision":"…","container_id":7,"id":42,"all":false}` verwendet die Revision
+und IDs aus der Live-Antwort. `all:true` entspricht der Vanilla-Auswahl für die maximal platzierbare
+Menge; es gibt keine eigene Crafting-Schleife. Die Aktion prüft Screenrevision, Screen-/Menü-/Verbindungs-
+Identität, Container-ID, bekanntes Rezept und aktuelle Zutaten direkt vor der normalen Rezeptbuch-
+Platzierung erneut. Fehlende Rezepte liefern 404, inkompatible/veraltete Zustände oder fehlende Zutaten
+409, ungültige Parameter 400. Rezeptbuch-Änderungen invalidieren alte Revisionen, damit wiederverwendete
+Display-IDs nicht ein anderes Rezept auswählen. Screen-/Overlay-/Resize-Prüfungen werden mit den
+Widget-Aktionen geteilt; eine ausgeführte Auswahl verbraucht die Revision ebenfalls.
+
+Erfolg bedeutet nur `{requested:true,...,confirmation:"read_live_container_after_server_update"}`.
+Die normale Rezeptbuchfunktion räumt die Ghost-Vorschau auf und sendet die Anfrage an den Server.
+Sie entnimmt **kein** Ergebnis und garantiert weder Platzierung noch Crafting. Nach den Serverupdates
+`/container` bzw. `/inventory` frisch lesen; diese Änderungen invalidieren über `/events` auch `/recipes`.
+Es werden keine Zutatenlisten oder Inventarantworten im Journal gespeichert.
+
+## Widget-Aktionen
+
+`GET /screen` behält seine bisherigen Felder und ergänzt bei offenem Screen `revision` sowie pro
+Widget `ref`, `supported` und `action` (`activate`, `set_text` oder `null`). Beide Referenzen sind opaque:
+immer die Strings aus der Antwort verwenden, keine Indizes oder Bildschirmkoordinaten ableiten.
+Aktuell unterstützt: normale `Button.Plain`-Buttons aus dem Vanilla-Button-Builder und die exakte
+Vanilla-Klasse `EditBox`. Eigene Unterklassen, Icon-/Cycle-Buttons, Slider, Listen und verschachtelte
+Controls werden nicht automatisch bedient. Nicht unterstützte direkt gelistete Controls melden
+`supported:false` und `unsupported_reason:"unsupported_widget_type"`.
+
+- `POST /screen/activate {"revision":"…","ref":"…"}` fokussiert den unterstützten Button und ruft
+  seine normale Aktivierungsfunktion mit Enter ohne Modifikatortasten auf. Es werden keine
+  Bildschirmkoordinaten geklickt und keine zusätzlichen Enter-/Chat-Sendeaktionen ausgeführt.
+- `POST /screen/text {"revision":"…","ref":"…","text":"neuer Inhalt"}` fokussiert das Feld und ersetzt
+  seinen gesamten Text über `EditBox.setValue`, einschließlich des normalen Responders. Ein leerer String
+  leert das Feld. Es gibt kein automatisches Bestätigen/Absenden. Bei EditBoxen zeigt `/screen` außerdem
+  den aktuellen `value`, `max_length`, `editable` und `focused`.
+
+Alle Pflichtparameter müssen Strings sein. Zeichen, die Vanilla beim Einfügen entfernen würde,
+Zeilenumbrüche, kaputte UTF-16-Sequenzen und zu lange Eingaben werden mit 400 abgewiesen; es wird
+nicht still gekürzt. `max_length` zählt wie Vanilla UTF-16-Codeeinheiten. Die Validierung des Screens
+im Responder bleibt wirksam: die Antwort enthält den resultierenden `value` und `accepted`, ob er dem
+angefragten Text entspricht. Das ist keine Zusage, dass der Screen den Inhalt fachlich akzeptiert oder
+bereits an den Server übermittelt hat.
+
+Screenwechsel, Overlaywechsel, Neuinitialisierung, Resize, Widget-Neuaufbau oder eine geänderte
+Child-Liste machen alte Referenzen ungültig. Unverändertes wiederholtes Lesen behält die Revision.
+Vor jeder Aktion wird Screenidentität, Revision, Widgetzugehörigkeit und active/visible geprüft — und
+nach dem Fokussieren nochmals. Ungültige/veraltete Referenzen, verdeckter Screen oder gesperrte Felder
+liefern 409. Eine nicht unterstützte Aktion liefert 400. Kein Klick auf einen inzwischen anderen Screen.
+
+Die Antwort enthält `performed:true` und `screen_changed` (Screenidentität gewechselt oder nun durch
+Overlay verdeckt). **Eine ausgeführte Aktion verbraucht alle Referenzen dieser Revision**, auch wenn
+nur ihr Callback scheitert. Vor der nächsten Aktion wieder `/screen` lesen. So kann ein Retry mit
+alten Referenzen keinen zweiten Klick auslösen. Alte `/screen/close`- und Container-Endpunkte bleiben
+unverändert; diese neue Referenzprüfung gilt für die beiden neuen Widget-Aktionen.
 
 ## Live-Stream und Session-Journal
 
@@ -171,7 +413,7 @@ zählt erfüllte Anforderungsgruppen, nicht einfach erfüllte Kriterien. Kriteri
 Clientfortschritt; serverseitige Triggerbedingungen werden nicht rekonstruiert. Auch Widerrufe und
 entfernte Erfolge werden beim nächsten Lesen berücksichtigt.
 
-`GET /stats` liefert `{stats:[{type,id,value},...]}`. Es werden nur Einträge aus dem tatsächlichen
+`GET /stats` liefert `{stats:[{type,id,value},...],received:boolean}`. Es werden nur Einträge aus dem tatsächlichen
 Vanilla-Statistikbestand ausgegeben. Ein fehlender Zähler taucht nicht auf und wird nicht als 0 ergänzt;
 ein gespeicherter Wert 0 bleibt 0. Typen umfassen `minecraft:mined`, `minecraft:used`, `minecraft:crafted`,
 `minecraft:killed` und `minecraft:custom` sowie weitere vorhandene Typen wie aufgehoben/weggeworfen.
@@ -185,6 +427,12 @@ Hintergrundabfrage oder automatische Serveranfrage. Statistiken können bis zur 
 (z. B. beim Öffnen des Statistikbildschirms) fehlen oder den zuletzt empfangenen Wert enthalten.
 Die Antwort behauptet keinen frisch abgefragten Serverstand. Ohne aktive Welt liefern beide Routen 409.
 Diese Live-Ansichten bleiben unabhängig vom NDJSON-Stream und Session-Journal.
+
+`POST /stats/sync` fordert mit Vanillas `REQUEST_STATS` einmal ein Statistikpaket beim Server an.
+Die Antwort `{requested:true}` bestätigt nur das Absenden, ohne auf die Antwort zu warten.
+Ohne Verbindung folgt 409. `GET /stats` ergänzt `received`: erst nach einem Statistikpaket der aktuellen
+Verbindung (auch einem leeren) true, nach Disconnect oder neuer Verbindung wieder false.
+Kein automatisches Polling, keine erfundenen Nullzähler, kein zusätzlicher Statistik-Snapshot.
 
 ## Live-Daten und optionale Details
 
@@ -296,7 +544,7 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 ## Tests
 
 Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
-Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness` und `SessionEventsHarness` gegen echte Minecraft-26.3-Datenobjekte aus
+Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness`, `ScreenWidgetsHarness`, `RecipeDataHarness`, `HudWidgetsHarness`, `HudDispatchHarness`, `PresentationHarness` und `ClientMetadataHarness` gegen echte Minecraft-26.3-Datenobjekte aus
 (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
 Die HTTP-Tests verwenden freie lokale Ports; der Plugin-Harness verwendet Port 25581.
 

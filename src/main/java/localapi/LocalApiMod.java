@@ -40,6 +40,7 @@ public final class LocalApiMod implements ClientModInitializer {
         // Never leave a key stuck down when the world goes away.
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> {
             Keys.releaseAll();
+            HudWidgets.INSTANCE.clear();
             if (server != null) server.stop();
         });
         ClientReceiveMessageEvents.CHAT.register((msg, signed, sender, params, ts) -> {
@@ -52,6 +53,9 @@ public final class LocalApiMod implements ClientModInitializer {
             if (!overlay) ClientEvents.chat("system", null, null, msg.getString(), null);
         });
 
+        net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry.addLast(
+                net.minecraft.resources.Identifier.fromNamespaceAndPath("localapi", "widgets"), HudWidgetRenderer::render);
+        ClientTickEvents.END_CLIENT_TICK.register(mc -> HudWidgets.INSTANCE.prune());
         initPlugins();
 
         try {

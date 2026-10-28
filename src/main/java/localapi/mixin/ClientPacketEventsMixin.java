@@ -50,7 +50,10 @@ public abstract class ClientPacketEventsMixin {
     private void localapi$advancements(CallbackInfo ci) { ClientEvents.invalidate("/advancements"); }
 
     @Inject(method = "handleAwardStats", at = @At("TAIL"))
-    private void localapi$stats(CallbackInfo ci) { ClientEvents.invalidate("/stats"); }
+    private void localapi$stats(CallbackInfo ci) {
+        localapi.StatsSync.awarded((ClientPacketListener)(Object)this);
+        ClientEvents.invalidate("/stats");
+    }
 
     @Inject(method = {"handleBlockUpdate", "handleChunkBlocksUpdate", "handleLevelChunkWithLight", "handleForgetLevelChunk", "handleLightUpdatePacket", "applyLightData", "handleChunksBiomes", "handleBlockChangedAck"}, at = @At("TAIL"))
     private void localapi$blocks(CallbackInfo ci) { ClientEvents.invalidate("/block", "/blocks", "/environment", "/target"); }

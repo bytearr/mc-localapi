@@ -33,7 +33,7 @@ final class BatchRequests {
                     if (!item.get("body").isJsonObject()) throw new HttpError(400, "batch item body must be an object");
                     body = item.getAsJsonObject("body");
                 }
-                if (normalized.equals("/batch") || normalized.equals("/screenshot"))
+                if (normalized.equals("/batch") || normalized.equals("/screenshot") || normalized.equals("/item/icon") || normalized.equals("/mod/icon"))
                     throw new HttpError(400, path + " cannot be used inside /batch");
                 Object v = handler.handle(new Request("POST", path, Map.of(), body));
                 res.addProperty("ok", true);

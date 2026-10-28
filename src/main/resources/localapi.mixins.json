@@ -10,10 +10,23 @@
     "BossHealthOverlayAccessor",
     "StatsCounterAccessor",
     "ClientPacketEventsMixin",
-    "ClientActionEventsMixin"
+    "ClientActionEventsMixin",
+    "EditBoxAccessor",
+    "ScreenRevisionMixin",
+    "GuiScreenRevisionMixin",
+    "ClientRecipeBookAccessor",
+    "RecipeBookEventsMixin",
+    "RecipeBookScreenAccessor",
+    "RecipeBookPlacementInvoker",
+    "ModelManagerAccessor",
+    "OptionInstanceAccessor",
+    "VideoOptionsInvoker",
+    "MouseSettingsScreenInvoker",
+    "ChatOptionsScreenInvoker",
+    "AccessibilityOptionsScreenInvoker",
+    "FontOptionsScreenInvoker"
   ],
   "injectors": {
     "defaultRequire": 1
   }
 }
-

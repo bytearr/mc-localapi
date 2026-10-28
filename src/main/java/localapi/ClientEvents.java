@@ -32,7 +32,13 @@ public final class ClientEvents {
         playerStamp = null;
     }
 
-    public static void invalidate(String... paths) { SessionEvents.INSTANCE.invalidate(paths); }
+    public static void invalidate(String... paths) {
+        SessionEvents.INSTANCE.invalidate(paths);
+        for (String path : paths) if (path.equals("/inventory") || path.equals("/container") || path.equals("/screen")) {
+            SessionEvents.INSTANCE.invalidate("/recipes");
+            break;
+        }
+    }
 
     public static void respawn(Minecraft mc) {
         SessionEvents.INSTANCE.respawn(dimension(mc));

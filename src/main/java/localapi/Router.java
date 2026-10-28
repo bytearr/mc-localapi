@@ -71,6 +71,7 @@ public final class Router {
         get("/scoreboard", r -> LiveData.scoreboard(needLevel().getScoreboard(), mc().level.registryAccess()));
         get("/bossbars", r -> { needPlayer(); return LiveData.bossbars(mc()); });
         get("/advancements", r -> ProgressData.advancements(needPlayer().connection.getAdvancements()));
+        get("/recipes", r -> RecipeData.list(r, RecipeData.live(mc()), net.minecraft.world.item.crafting.display.SlotDisplayContext.fromLevel(needLevel()), ScreenWidgets.INSTANCE));
         get("/stats", r -> ProgressData.statistics(needPlayer().getStats()));
         get("/journal", r -> SessionEvents.INSTANCE.journal(r));
         get("/events", r -> { throw new HttpError(400, "/events is an NDJSON stream; open it directly with GET"); });
@@ -91,6 +92,7 @@ public final class Router {
         post("/player/look_at", Router::lookAt);
         post("/container/click", Router::containerClick);
         post("/screen/close", Router::screenClose);
+        post("/recipes/select", r -> RecipeData.select(r, mc()));
         post("/screen/activate", r -> widgetAction(r, false));
         post("/screen/text", r -> widgetAction(r, true));
         post("/chat", Router::chatSend);
@@ -142,6 +144,8 @@ public final class Router {
         doc("/scoreboard", "Client-known objectives, scores and teams");
         doc("/bossbars", "Active client boss bars");
         doc("/advancements", "Client-known advancements and received criterion progress");
+        doc("/recipes", "Client-known recipe displays and live craftability", "after:integer", "limit:integer", "item_details:boolean");
+        doc("/recipes/select", "Request normal recipe-book placement on the inspected menu", "revision:string!", "container_id:integer!", "id:integer!", "all:boolean");
         doc("/stats", "Counters currently present in the client statistics map");
         doc("/events", "Transient NDJSON invalidations; fetch current state from live routes");
         doc("/journal", "Historical facts for this session, never current state", "since:integer", "limit:integer", "session:string");

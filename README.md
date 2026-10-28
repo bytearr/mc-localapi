@@ -85,12 +85,57 @@ berücksichtigt, einfacher ist es sie auszuschalten.
 | `GET /bossbars` | aktive Bossbars im Client |
 | `GET /advancements` | clientbekannte Erfolge und übermittelter Fortschritt pro Kriterium |
 | `GET /stats` | tatsächlich im Client vorhandene Statistikzähler |
+| `GET /recipes` | clientbekannte Rezeptanzeigen, Ergebnisse und aktuelle Zutatenverfügbarkeit |
 | `GET /events` | authentifizierter NDJSON-Livestream mit Änderungs-Hinweisen |
 | `GET /journal?since=0&limit=200` | historische Ereignisse der aktuellen/zuletzt beendeten Session |
 | `GET /block?x=&y=&z=` | Block + Blockstate |
 | `GET /blocks?x1=&y1=&z1=&x2=&y2=&z2=&include_air=0` | Region (max 32768 Blöcke) als Palette + `[x,y,z,idx]` |
 | `GET /chat/log?since=0` | empfangene Chat-/System-Nachrichten, `since` = zuletzt gesehene id |
 | `GET /routes` | Liste aller Routen |
+
+## Rezeptbuch
+
+`GET /recipes?after=-1&limit=100` liest nur die tatsächlich im Client bekannten Rezeptanzeigen.
+Die Antwort enthält `recipes`, `next_after`, `has_more`, `supported_menu`, `menu_kind`, `container_id`
+und bei einem unterstützten offenen Screen dessen `revision`. `limit` ist 1–200; `after` ist eine
+exklusive **Rezeptanzeige-ID**, kein Listenindex. Seiten werden jeweils live gelesen; nach einem
+Rezeptbuch-Update die Aufzählung erneut beginnen. Es gibt keinen gespeicherten Inventar-/Rezeptstand.
+
+Ein Rezept enthält `id` (die vom Server vergebene Display-ID, kein erfundener Recipe-Resource-Name),
+`display_type`, `category`, `highlighted`, `compatible`, `craftable`, `reason`, `results` und `requirements`.
+Shaped-Rezepte ergänzen `width`/`height`. Ergebnisse sind **Anzeigevorschauen**, keine erzeugten Items.
+`results.items` verwendet die bisherigen kompakten Item-Felder; erst `item_details=true` ergänzt Details.
+Es werden höchstens 32 Ergebnisvarianten pro Rezept ausgegeben; `results.truncated` meldet weitere.
+
+Bekannte `requirements.ingredients` enthalten pro benötigter Zutat die möglichen Item-IDs in
+`alternatives`; wiederholte Zutaten bleiben wiederholt. Das ist keine Zuordnung zu Crafting-Slots
+und kein berechneter Restbestand. Die Ausgabe begrenzt Zutaten auf 64 und Alternativen auf 128,
+jeweils mit `truncated`. Nicht übermittelte Anforderungen sind `null`, nicht eine leere Zutatenliste.
+
+`craftable` wird frisch wie im Vanilla-Rezeptbuch aus dem Spielerinventar plus den Crafting-Eingabefeldern
+des aktuellen Menüs berechnet. Ohne unterstützten offenen Screen oder ohne übermittelte Anforderungen
+ist es `null`. `reason` unterscheidet `no_supported_recipe_screen`, `incompatible_menu`,
+`disabled_features`, `requirements_unavailable` und `missing_ingredients`. `craftable:true` sagt nichts
+über freien Inventarplatz, Serverzustand, Brennstoff oder ein bereits fertiges Ergebnis aus.
+
+Unterstützt sind die Vanilla-Rezeptbuch-Screens mit Inventar-Crafting (2×2), Werkbank (3×3), Ofen,
+Schmelzofen oder Räucherofen. Kategorie und Rastergröße müssen passen. Andere Menüs, unter anderem
+Steinsäge/Schmiedetisch und eigene Menüklassen, lösen keine Rezeptplatzierung aus.
+
+`POST /recipes/select {"revision":"…","container_id":7,"id":42,"all":false}` verwendet die Revision
+und IDs aus der Live-Antwort. `all:true` entspricht der Vanilla-Auswahl für die maximal platzierbare
+Menge; es gibt keine eigene Crafting-Schleife. Die Aktion prüft Screenrevision, Screen-/Menü-/Verbindungs-
+Identität, Container-ID, bekanntes Rezept und aktuelle Zutaten direkt vor der normalen Rezeptbuch-
+Platzierung erneut. Fehlende Rezepte liefern 404, inkompatible/veraltete Zustände oder fehlende Zutaten
+409, ungültige Parameter 400. Rezeptbuch-Änderungen invalidieren alte Revisionen, damit wiederverwendete
+Display-IDs nicht ein anderes Rezept auswählen. Screen-/Overlay-/Resize-Prüfungen werden mit den
+Widget-Aktionen geteilt; eine ausgeführte Auswahl verbraucht die Revision ebenfalls.
+
+Erfolg bedeutet nur `{requested:true,...,confirmation:"read_live_container_after_server_update"}`.
+Die normale Rezeptbuchfunktion räumt die Ghost-Vorschau auf und sendet die Anfrage an den Server.
+Sie entnimmt **kein** Ergebnis und garantiert weder Platzierung noch Crafting. Nach den Serverupdates
+`/container` bzw. `/inventory` frisch lesen; diese Änderungen invalidieren über `/events` auch `/recipes`.
+Es werden keine Zutatenlisten oder Inventarantworten im Journal gespeichert.
 
 ## Widget-Aktionen
 
@@ -330,7 +375,7 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 ## Tests
 
 Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
-Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness` und `ScreenWidgetsHarness` gegen echte Minecraft-26.3-Datenobjekte aus
+Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness`, `ScreenWidgetsHarness` und `RecipeDataHarness` gegen echte Minecraft-26.3-Datenobjekte aus
 (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
 Die HTTP-Tests verwenden freie lokale Ports; der Plugin-Harness verwendet Port 25581.
 

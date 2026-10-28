@@ -44,10 +44,10 @@ public final class ScreenWidgets {
         return true;
     }
 
-    void describe(Screen current, JsonObject out, JsonArray widgets) {
+    String revisionFor(Screen current) {
         if (!matches(current)) {
             reset();
-            if (current == null) return;
+            if (current == null) return null;
             screen = new WeakReference<>(current);
             revision = UUID.randomUUID().toString();
             width = current.width; height = current.height;
@@ -56,6 +56,18 @@ public final class ScreenWidgets {
                 references.add(UUID.randomUUID().toString());
             }
         }
+        return revision;
+    }
+
+    void requireRevision(Screen current, String expected) {
+        if (!matches(current) || !revision.equals(expected)) throw new HttpError(409, "screen revision is stale; read the live view again");
+    }
+
+    void consumeRevision(Screen current, String expected) { requireRevision(current, expected); reset(); }
+
+    void describe(Screen current, JsonObject out, JsonArray widgets) {
+        revisionFor(current);
+        if (current == null) return;
         out.addProperty("revision", revision);
         int index = 0;
         for (int i = 0; i < current.children().size(); i++) {

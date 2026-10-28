@@ -26,6 +26,7 @@ final class ProgressData {
                     entry.addProperty("id", holder.id().toString());
                     advancement.parent().ifPresent(parent -> entry.addProperty("parent", parent.toString()));
                     advancement.display().ifPresent(display -> {
+                        entry.addProperty("icon", ItemView.holderId(display.icon().item()));
                         entry.addProperty("title", display.title().getString());
                         entry.addProperty("description", display.description().getString());
                     });
@@ -42,15 +43,21 @@ final class ProgressData {
                         entry.addProperty("done", progress.isDone());
                         entry.addProperty("progress", progress.getPercent());
                         JsonObject criteria = new JsonObject();
+                        JsonObject criterionNames = new JsonObject();
                         // Use the received progress, not server-only trigger definitions or local defaults.
                         TreeSet<String> names = new TreeSet<>();
                         progress.getCompletedCriteria().forEach(names::add);
                         progress.getRemainingCriteria().forEach(names::add);
                         for (String name : names) {
                             var criterion = progress.getCriterion(name);
-                            if (criterion != null) criteria.addProperty(name, criterion.isDone());
+                            if (criterion != null) {
+                                criteria.addProperty(name, criterion.isDone());
+                                String displayName = ClientNames.criterion(name);
+                                if (displayName != null) criterionNames.addProperty(name, displayName);
+                            }
                         }
                         entry.add("criteria", criteria);
+                        entry.add("criterion_names", criterionNames);
                     }
                     entries.add(entry);
                 });
@@ -70,6 +77,8 @@ final class ProgressData {
                     entry.addProperty("type", BuiltInRegistries.STAT_TYPE.getKey(stat.getType()).toString());
                     entry.addProperty("id", statId(stat));
                     entry.addProperty("value", value.getIntValue());
+                    entry.addProperty("name", ClientNames.stat(stat));
+                    entry.addProperty("formatted_value", stat.format(value.getIntValue()));
                     entries.add(entry);
                 });
         JsonObject out = new JsonObject();

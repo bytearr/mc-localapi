@@ -17,10 +17,10 @@
     "ClientRecipeBookAccessor",
     "RecipeBookEventsMixin",
     "RecipeBookScreenAccessor",
-    "RecipeBookPlacementInvoker"
+    "RecipeBookPlacementInvoker",
+    "ModelManagerAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
   }
 }
-

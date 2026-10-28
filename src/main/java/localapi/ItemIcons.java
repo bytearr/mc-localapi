@@ -32,8 +32,8 @@ final class ItemIcons {
         } else {
             if (mc.player == null || mc.level == null) throw new HttpError(409, "not in a world");
             double slot = r.reqDbl("slot");
-            if (slot != Math.rint(slot) || slot < 0 || slot >= mc.player.getInventory().getContainerSize()) throw new HttpError(400, "invalid inventory slot");
-            stack = mc.player.getInventory().getItem((int)slot);
+            if (slot != Math.rint(slot) || slot < 0 || slot >= mc.player.inventoryMenu.slots.size()) throw new HttpError(400, "invalid inventory slot");
+            stack = mc.player.inventoryMenu.getSlot((int)slot).getItem();
         }
         if (stack.isEmpty()) throw new HttpError(404, "empty item stack");
         return stack.copy();

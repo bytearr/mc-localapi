@@ -114,9 +114,12 @@ Icon-Dateien, Chunk-Caches oder gespeicherten Oberflächen werden angelegt.
   Bundle-Vorschauen sind keine Textzeilen und werden hier nicht als Bild nachgebaut.
 
 `GET /blocks` behält `palette` als Array von Block-ID-Strings. Das zusätzliche `palette_entries`
-enthält am selben Index `{id,map_color}` mit der RGB-Zahl aus `BlockState.getMapColor` am gelesenen
-Ort. Derselbe Block-ID-String kann mehrfach auftreten, wenn seine Zustände/Positionen unterschiedliche
-Map-Farben liefern. Die Farbe ist die Vanilla-Map-Farbe, keine Texturprobe oder fertige, schattierte Karte.
+enthält am selben Index `{id,map_color}`. Die RGB-Zahl kommt bei vorhandener Block-Tint aus
+`Minecraft.getBlockColors().getTintSources(state)` und `colorInWorld` am gelesenen Ort: die erste
+aktive Tint-Schicht in Registrierungsreihenfolge. `-1` bedeutet keine Tint. Falls keine Welt-Tint aktiv
+ist, wird eine registrierte Terrain-Particle-Tint berücksichtigt (in 26.3 insbesondere Wasser).
+Ohne aktive Tint bleibt `BlockState.getMapColor(...).col` die Farbe. Derselbe Block-ID-String kann mehrfach auftreten, wenn seine Zustände/Positionen unterschiedliche
+Map-Farben liefern. Die Farbe ist eine Welt-Tint bzw. Materialfarbe, keine Texturprobe oder fertige, schattierte Karte.
 
 `GET /surface?chunk_x1=-8&chunk_z1=-8&chunk_x2=7&chunk_z2=7` liest ein inklusives Rechteck in
 **Chunk-Koordinaten**. Maximal 65536 angefragte Spalten (256 Chunks) pro Request; größere Bereiche
@@ -131,8 +134,10 @@ in mehrere Rechtecke aufteilen. Die Grenze gilt auch für fehlende Chunks. Die A
 - `requested_columns` und `max_columns`: angefragte Größe und Limit.
 
 `GET /item/icon?id=minecraft:potion` liefert das Standard-Icon eines registrierten Items.
-`GET /item/icon?slot=0` rendert den aktuell vorhandenen Stack im Spieler-Inventarslot (die Slotnummern
-von `/inventory`, keine Container-Menüslots). Genau einen Parameter verwenden. Der Erfolg ist direkt
+`GET /item/icon?slot=36` rendert den aktuell vorhandenen Stack im Slot von `player.inventoryMenu`,
+genau wie `/inventory`: 36–44 Hotbar, 9–35 Inventar, 5–8 Rüstung und 45 Offhand (0–4 Crafting).
+Das gilt auch bei geöffneter Truhe; deren `containerMenu` wird nicht gelesen. Außerhalb der Slots dieses
+Spieler-Menüs folgt 400, bei einem leeren Slot 404. Genau einen Parameter verwenden. Der Erfolg ist direkt
 `image/png`, 32×32 Pixel mit Transparenz, **kein JSON/Base64 und keine URL**. Die bestehende Loopback-,
 Host- und `X-Password`-Prüfung gilt weiterhin. `Cache-Control: no-store` verhindert Wiederverwendung.
 

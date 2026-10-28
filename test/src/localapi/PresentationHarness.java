@@ -33,6 +33,30 @@ public final class PresentationHarness {
     static final class Counter extends StatsCounter implements localapi.mixin.StatsCounterAccessor {
         public it.unimi.dsi.fastutil.objects.Object2IntMap<Stat<?>> localapi$stats(){return stats;}
     }
+    static void tints() {
+        var colors=net.minecraft.client.color.block.BlockColors.createDefault();
+        var world=(net.minecraft.client.renderer.block.BlockAndTintGetter)java.lang.reflect.Proxy.newProxyInstance(
+                PresentationHarness.class.getClassLoader(),new Class<?>[]{net.minecraft.client.renderer.block.BlockAndTintGetter.class},(proxy,method,args)->{
+                    if(method.getName().equals("getBlockTint"))return ((BlockPos)args[0]).getX()==0?0x123456:0xabcdef;
+                    if(method.getName().equals("getBlockState"))return Blocks.AIR.defaultBlockState();
+                    throw new AssertionError("unexpected lookup: "+method.getName());
+                });
+        for(var block:List.of(Blocks.GRASS_BLOCK,Blocks.OAK_LEAVES,Blocks.WATER)) {
+            var palette=new BlockPalette(colors);var state=block.defaultBlockState();
+            int first=palette.add(state,world,BlockPos.ZERO),second=palette.add(state,world,new BlockPos(1,0,0));
+            check(first!=second,"same block different world tints split palette");
+            var out=new JsonObject();palette.write(out);var entries=out.getAsJsonArray("palette_entries");
+            check(entries.get(first).getAsJsonObject().get("map_color").getAsInt()==0x123456,"first world tint exact");
+            check(entries.get(second).getAsJsonObject().get("map_color").getAsInt()==0xabcdef,"second world tint exact");
+        }
+        var palette=new BlockPalette(colors);palette.add(Blocks.STONE.defaultBlockState(),world,BlockPos.ZERO);
+        var out=new JsonObject();palette.write(out);
+        check(out.getAsJsonArray("palette_entries").get(0).getAsJsonObject().get("map_color").getAsInt()==Blocks.STONE.defaultBlockState().getMapColor(world,BlockPos.ZERO).col,"untinted block retains material color");
+        colors.register(List.of(net.minecraft.client.color.block.BlockTintSources.constant(-1),net.minecraft.client.color.block.BlockTintSources.constant(0xff987654)),Blocks.STONE);
+        palette=new BlockPalette(colors);palette.add(Blocks.STONE.defaultBlockState(),world,BlockPos.ZERO);out=new JsonObject();palette.write(out);
+        check(out.getAsJsonArray("palette_entries").get(0).getAsJsonObject().get("map_color").getAsInt()==0x987654,"registered tint skips blank layers and strips alpha");
+    }
+
     @SuppressWarnings("unchecked")
     static void http(byte[] png) throws Exception {
         var f=Router.class.getDeclaredField("ROUTES");f.setAccessible(true);
@@ -112,7 +136,7 @@ public final class PresentationHarness {
                 check(entry.getAsJsonObject("criteria").get("custom_trigger").getAsBoolean()==false,"old criteria booleans preserved");
             }else check(!entry.has("icon"),"no display no icon");
         }
-        var pal=new BlockPalette();int stone=pal.add(Blocks.STONE.defaultBlockState(),EmptyBlockGetter.INSTANCE,BlockPos.ZERO);
+        var pal=new BlockPalette(net.minecraft.client.color.block.BlockColors.createDefault());int stone=pal.add(Blocks.STONE.defaultBlockState(),EmptyBlockGetter.INSTANCE,BlockPos.ZERO);
         check(stone==pal.add(Blocks.STONE.defaultBlockState(),EmptyBlockGetter.INSTANCE,BlockPos.ZERO),"palette deduplicates");
         pal.add(Blocks.DIRT.defaultBlockState(),EmptyBlockGetter.INSTANCE,BlockPos.ZERO);var out=new JsonObject();pal.write(out);
         check(out.getAsJsonArray("palette").get(0).getAsString().equals("minecraft:stone"),"legacy palette strings preserved");
@@ -128,6 +152,7 @@ public final class PresentationHarness {
         check(image.getRGB(0,0)==0x800000ff,"PNG premultiplied tint converted to straight alpha");check(image.getRGB(1,1)==0x00000000,"PNG transparent pixel preserved");
         var batch=(JsonArray)BatchRequests.dispatch(new Request("POST","/batch",Map.of(),JsonParser.parseString("{\"requests\":[{\"path\":\"/item/icon/\"}]}").getAsJsonObject()),r->{throw new AssertionError("icon dispatched inside batch");});
         check(!batch.get(0).getAsJsonObject().get("ok").getAsBoolean(),"binary route blocked in batch");
+        tints();
         http(png);
         System.out.println("PASS "+checks+" presentation checks");
     }

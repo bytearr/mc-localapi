@@ -13,7 +13,11 @@
     "ClientActionEventsMixin",
     "EditBoxAccessor",
     "ScreenRevisionMixin",
-    "GuiScreenRevisionMixin"
+    "GuiScreenRevisionMixin",
+    "ClientRecipeBookAccessor",
+    "RecipeBookEventsMixin",
+    "RecipeBookScreenAccessor",
+    "RecipeBookPlacementInvoker"
   ],
   "injectors": {
     "defaultRequire": 1

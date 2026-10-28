@@ -19,6 +19,8 @@ if ($LASTEXITCODE) { throw 'advancement/statistics checks failed' }
 if ($LASTEXITCODE) { throw 'session/stream checks failed' }
 & "$JDK\bin\java" -cp $testCP localapi.ScreenWidgetsHarness
 if ($LASTEXITCODE) { throw 'screen-widget checks failed' }
+& "$JDK\bin\java" -cp $testCP localapi.RecipeDataHarness
+if ($LASTEXITCODE) { throw 'recipe-book checks failed' }
 & "$JDK\bin\java" -cp $testCP localapi.RegressionHarness
 if ($LASTEXITCODE) { throw 'regression checks failed' }
 & "$JDK\bin\java" -cp $testCP harness.Harness "$PSScriptRoot\work\root" 'none' '0'

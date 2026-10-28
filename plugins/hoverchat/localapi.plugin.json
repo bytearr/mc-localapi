@@ -1,0 +1,8 @@
+{
+  "id": "hoverchat",
+  "name": "Hover chat",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "Shift+T while hovering a slot sends that item's name and enchantments into chat.",
+  "entrypoint": "hoverchat.HoverChatPlugin"
+}

@@ -29,6 +29,8 @@ Schutz: Loopback-only, `Host` muss `127.0.0.1`/`localhost` sein, Requests mit `O
 { "ok": false, "error": "text" }
 ```
 
+JSON-`null` wird nicht übertragen, weder in normalen Antworten noch in NDJSON-Frames. Der Schlüssel fehlt dann. Die Zahl 0 bleibt 0.
+
 HTTP-Status: 200, 400 Parameter, 401 Passwort, 404 Route, 405 Methode, 409 Zustand (z. B. nicht in einer Welt),
 413 JSON-Body größer als 1 MiB, 504 Spiel hat nicht in `timeoutMs` geantwortet.
 
@@ -124,20 +126,21 @@ Live-Abfragen bleiben maßgeblich; der Stream ist kein lückenloses Änderungspr
 
 ### Historische Fakten
 
-`GET /journal` liefert `session` (UUID oder `null`), `active`, `last_id`, `next_since`, `has_more`
+`GET /journal` liefert `session` (UUID; vor der ersten Play-Verbindung fehlt der Schlüssel), `active`, `last_id`, `next_since`, `has_more`
 und `events`. Ein Ereignis hat `id`, `session`, `time` (lokale Beobachtungszeit in Unix-Millisekunden),
 `kind` und `data`. Es bleiben ausschließlich diese vergangenen Fakten erhalten:
 
 - `session_started`, `session_ended`: Grenzen einer Play-Verbindung.
-- `chat_received`: tatsächlich empfangener Chat oder Systemtext mit `kind`, bekanntem `sender` und
-  `sender_uuid`, `text` sowie `signature` (Base64, sonst `null`). Actionbar/HUD-Updates gehören nicht hinein.
+- `chat_received`: tatsächlich empfangener Chat oder Systemtext mit `kind` und `text`. `sender` und
+  `sender_uuid` stehen nur dabei, wenn sie bekannt sind. `signature` ist Base64, sonst fehlt der Schlüssel.
+  Actionbar/HUD-Updates gehören nicht hinein.
 - `chat_deletion_requested`: eine verarbeitete Server-Löschanforderung mit der aufgelösten Signatur.
   Damit lässt sich signierter Chat zuordnen. Die ursprüngliche Empfangstatsache wird nicht umgeschrieben;
   die Löschanforderung behauptet nicht, dass die Nachricht noch angezeigt wurde oder bereits entfernt ist.
   Für unsignierte Nachrichten wird keine Zuordnung erfunden.
 - `death`: das Server-Todessignal für den lokalen Spieler, einmal pro Leben, mit `cause`
   (empfangene Todesnachricht, keine erfundene Damage-Type-ID), `cause_source`, `dimension` und
-  `position:[x,y,z]` bei Beobachtung. Unbekannte Ursache ist `null`.
+  `position:[x,y,z]` bei Beobachtung. Bei unbekannter Ursache fehlen `cause` und `cause_source`.
 - `dimension_changed`: ein beim Respawn-Paket tatsächlich gewechselter Dimensionsschlüssel mit `from`
   und `to`. Respawn in derselben Dimension erzeugt keinen Wechsel; Neuverbinden ebenfalls nicht.
 
@@ -169,8 +172,8 @@ Clientfortschritt; serverseitige Triggerbedingungen werden nicht rekonstruiert. 
 entfernte Erfolge werden beim nächsten Lesen berücksichtigt.
 
 `GET /stats` liefert `{stats:[{type,id,value},...]}`. Es werden nur Einträge aus dem tatsächlichen
-Vanilla-Statistikbestand ausgegeben. Ein fehlender Zähler ist **nicht** null; ein ausdrücklich vorhandener
-Nullwert wird ausgegeben. Typen umfassen `minecraft:mined`, `minecraft:used`, `minecraft:crafted`,
+Vanilla-Statistikbestand ausgegeben. Ein fehlender Zähler taucht nicht auf und wird nicht als 0 ergänzt;
+ein gespeicherter Wert 0 bleibt 0. Typen umfassen `minecraft:mined`, `minecraft:used`, `minecraft:crafted`,
 `minecraft:killed` und `minecraft:custom` sowie weitere vorhandene Typen wie aufgehoben/weggeworfen.
 `used` entspricht Vanillas Benutzungszähler, nicht einem separat berechneten Materialverbrauch.
 Allgemeine IDs sind beispielsweise `minecraft:play_time`, `minecraft:deaths` und `minecraft:walk_one_cm`.
@@ -198,7 +201,7 @@ Auch Aktionsantworten, die diese Ansichten zurückgeben, akzeptieren den Paramet
 Details: `enchantments`, `stored_enchantments` (jeweils ID/Level), `lore`, `component_ids`, `potion`
 (ID, Farbe, Basis-Effekte und `duration_scale`) sowie die aktuell im Item vorhandenen `container`-/`bundle`-Komponenten.
 `component_ids` listet vorhandene Komponenten; es ist **kein beliebiger NBT-/Komponentenexport**.
-Fehlende Potion-/Inhaltskomponenten sind `null`. Ein Inhalt ist eine Liste von `{slot,item}` mit
+Fehlen Potion- oder Inhaltskomponenten, fehlen die Schlüssel `potion`, `container` bzw. `bundle`. Ein Inhalt ist eine Liste von `{slot,item}` mit
 `size` und `truncated`; leere Slots behalten ihre Indizes. Das liest nur die aktuell übermittelten
 Item-Komponenten, keine Kisten in der Welt.
 
@@ -210,20 +213,20 @@ auch bei angefragten Details die bisherigen drei Felder.
 ### Spieler und Welt
 
 `/player` ergänzt `effects` (ID, nullbasierter `amplifier`, `duration_ticks`, `infinite`,
-`ambient`, `visible`, `show_icon`), `air`, `max_air`, `on_fire`, `fire_ticks`, `xp_progress` und `xp_total`.
-Unendliche Effekte haben `duration_ticks:null`. `fire_ticks` ist `null`: der Client kennt den Brennstatus,
+`ambient`, `visible`, `show_icon`), `air`, `max_air`, `on_fire`, `xp_progress` und `xp_total`.
+Bei unendlichen Effekten fehlt `duration_ticks`. `fire_ticks` fehlt immer: der Client kennt den Brennstatus,
 aber keinen verlässlichen synchronisierten Resttimer. Tick-Dauern sind Spielticks, keine garantierte Echtzeit.
 
 `/world` ergänzt `game_time_ticks`, `clock`, `clock_time_ticks` und `time_of_day_ticks`.
 Letzteres ist die Zeit der Dimensions-Standarduhr modulo 24000 (Vanilla-Tageszyklus).
-Ohne Standarduhr sind diese drei Uhrfelder `null`; es wird keine Uhrzeit erfunden.
+Ohne Standarduhr fehlen `clock`, `clock_time_ticks` und `time_of_day_ticks`; es wird keine Uhrzeit erfunden.
 
 `/environment` liefert die gespeicherte 4×4×4-Biomzelle (`biome_sampling:"quart"`) und Sky-/Block-Licht
 (0–15, ohne Tageszeit-Abdunklung). So wird kein benachbarter ungeladener Chunk zur Biominterpolation benutzt.
 Eine geladene Position außerhalb der Bauhöhe liefert 400. Ein ungeladener Chunk liefert 200 mit
-`loaded:false`, `reason:"chunk_not_loaded"` und `null` für Biom und Licht.
+`loaded:false` und `reason:"chunk_not_loaded"`. Biom und Licht fehlen.
 
-Auch `/block` und das Blockziel in `/target` melden ungeladene Chunks ausdrücklich (`id:null`, `state:null`),
+Auch `/block` und das Blockziel in `/target` melden ungeladene Chunks ausdrücklich (`id` und `state` fehlen),
 statt scheinbar gültige Luft zu liefern. `/blocks` prüft die gesamte Region vor dem Lesen und liefert
 409 mit `loaded:false` und `unloaded_chunks:[[chunk_x,chunk_z],...]`, sobald ein benötigter Chunk fehlt.
 Es wird kein Chunk geladen und keine unvollständige Region als vollständig ausgegeben.
@@ -238,14 +241,14 @@ Es wird kein Chunk geladen und keine unvollständige Region als vollständig aus
   außerdem Händler-Level/XP und Restock-/Fortschrittsanzeige. Item-Details bleiben separat opt-in.
 - Amboss: `level_cost`.
 - Zaubertisch: drei Optionen mit Levelanforderung, Hinweis-Enchantment und Hinweis-Level. `available` bedeutet
-  nur eine vorhandene Option, nicht dass der Spieler sie bezahlen kann. Nicht übermittelte Hinweise sind `null`.
+  nur eine vorhandene Option, nicht dass der Spieler sie bezahlen kann. Nicht übermittelte Hinweise fehlen (`enchantment`, `enchantment_level`).
 
 Andere Menüs behalten ihre generischen Slots und melden `supported:false`, `kind:"unsupported"`.
 Die Werte sind live synchronisierte Clientdaten; unmittelbar nach dem Öffnen kann noch ein Update ausstehen.
 
 `/scoreboard` enthält `display_slots`, `objectives` (inklusive Scores) und `teams`.
 Text steht als lesbarer String und als `*_component` mit Formatierung bereit; nicht kodierbare
-Textkomponenten sind `null`, der lesbare Text bleibt erhalten. Score-Einträge enthalten Zahlenwert,
+Textkomponenten fehlen, der lesbare Text bleibt erhalten. Score-Einträge enthalten Zahlenwert,
 formatierten Wert und `hidden`. Es werden nur clientbekannte Einträge ausgegeben.
 
 `/bossbars` enthält ID, Name/Textkomponente, Fortschritt, Farbe, Overlay und die Musik/Nebel/Dunkel-Flags.

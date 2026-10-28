@@ -1,0 +1,8 @@
+{
+  "id": "console",
+  "name": "Console",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "Serves the local console website on 127.0.0.1:8088 and proxies it to this mod. The page, its CSS, its script and the skin viewer are inside this jar.",
+  "entrypoint": "console.ConsolePlugin"
+}

@@ -141,7 +141,8 @@ Ungültige Werte liefern 400 und lassen den bisherigen Eintrag stehen. Updates v
 auch bei erreichtem Limit möglich. Überlappung und Anordnung legt das Script fest; spätere Einträge
 werden über früheren gezeichnet. `GET` liefert die aktuelle Timer-Anzeige, Position/Größe wie vom Script
 angegeben und `remaining_ms` begrenzt auf Widget- und Lease-Restlaufzeit. HUD-Daten werden nicht ins
-Session-Journal oder den Event-Stream übernommen. Die Routen zum Anlegen/Ändern/Lesen erfordern eine aktive Welt.
+Session-Journal oder den Event-Stream übernommen. HUD-POSTs lösen keine Spielzustands-Invalidierung aus,
+auch nicht innerhalb von `/batch`; dort invalidieren nur die jeweiligen Spielaktionen. Die Routen zum Anlegen/Ändern/Lesen erfordern eine aktive Welt.
 
 ## Rezeptbuch
 
@@ -425,7 +426,7 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 ## Tests
 
 Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
-Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness`, `ScreenWidgetsHarness`, `RecipeDataHarness` und `HudWidgetsHarness` gegen echte Minecraft-26.3-Datenobjekte aus
+Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness`, `ScreenWidgetsHarness`, `RecipeDataHarness`, `HudWidgetsHarness` und `HudDispatchHarness` gegen echte Minecraft-26.3-Datenobjekte aus
 (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
 Die HTTP-Tests verwenden freie lokale Ports; der Plugin-Harness verwendet Port 25581.
 

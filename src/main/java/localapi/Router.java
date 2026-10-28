@@ -64,12 +64,14 @@ public final class Router {
         get("/target", Router::target);
         get("/hand", Router::hand);
         get("/inventory", Router::inventory);
+        get("/item/icon", r -> ItemIcons.read(r, mc()));
         get("/container", Router::container);
         get("/screen", Router::screen);
         get("/entities", Router::entities);
         get("/players", Router::players);
         get("/block", Router::block);
         get("/blocks", Router::blocks);
+        get("/surface", r -> SurfaceData.read(needLevel(), r));
         get("/environment", r -> LiveData.environment(needLevel(), r));
         get("/scoreboard", r -> LiveData.scoreboard(needLevel().getScoreboard(), mc().level.registryAccess()));
         get("/bossbars", r -> { needPlayer(); return LiveData.bossbars(mc()); });
@@ -150,6 +152,8 @@ public final class Router {
         doc("/block", "Block and block state at a position", "x:integer!", "y:integer!", "z:integer!");
         doc("/blocks", "Region of blocks (max 32768)", "x1:integer!", "y1:integer!", "z1:integer!",
                 "x2:integer!", "y2:integer!", "z2:integer!", "include_air:boolean");
+        doc("/item/icon", "Fresh inventory icon PNG, exactly one of id or slot", "id:string", "slot:integer");
+        doc("/surface", "Live highest non-air blocks in loaded chunks", "chunk_x1:integer!", "chunk_z1:integer!", "chunk_x2:integer!", "chunk_z2:integer!");
         doc("/environment", "Live biome and lighting (loaded chunks only)", "x:integer!", "y:integer!", "z:integer!");
         doc("/scoreboard", "Client-known objectives, scores and teams");
         doc("/bossbars", "Active client boss bars");
@@ -506,8 +510,7 @@ public final class Router {
             }
         }
         boolean air = r.bool("include_air", false);
-        List<String> palette = new ArrayList<>();
-        Map<String, Integer> index = new LinkedHashMap<>();
+        BlockPalette palette = new BlockPalette();
         JsonArray rows = new JsonArray();
         BlockPos.MutableBlockPos mp = new BlockPos.MutableBlockPos();
         // Long counters cannot wrap at Integer.MAX_VALUE. Empty height intersections do no work.
@@ -517,16 +520,13 @@ public final class Router {
                     mp.set((int) x, (int) y, (int) z);
                     BlockState st = LiveData.loadedChunk(l, (int) x, (int) z).getBlockState(mp);
                     if (!air && st.isAir()) continue;
-                    String bid = BuiltInRegistries.BLOCK.getKey(st.getBlock()).toString();
-                    int pi = index.computeIfAbsent(bid, k -> { palette.add(k); return palette.size() - 1; });
+                    int pi = palette.add(st, l, mp);
                     JsonArray row = new JsonArray();
                     row.add(x); row.add(y); row.add(z); row.add(pi);
                     rows.add(row);
                 }
         JsonObject o = new JsonObject();
-        JsonArray pal = new JsonArray();
-        palette.forEach(pal::add);
-        o.add("palette", pal);
+        palette.write(o);
         o.add("blocks", rows); // [x, y, z, palette_index]
         return o;
     }

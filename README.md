@@ -93,6 +93,58 @@ berücksichtigt, einfacher ist es sie auszuschalten.
 | `GET /chat/log?since=0` | empfangene Chat-/System-Nachrichten, `since` = zuletzt gesehene id |
 | `GET /routes` | Liste aller Routen |
 
+## Client-Darstellung und geladene Oberfläche
+
+Alle folgenden Werte kommen aus dem aktuellen Client. Keine Übersetzungstabellen, externen Assets,
+Icon-Dateien, Chunk-Caches oder gespeicherten Oberflächen werden angelegt.
+
+- `/advancements` ergänzt `icon` (Item-ID) nur bei vorhandenem Display. `criteria` bleibt die bisherige
+  Abbildung auf Booleans; `criterion_names` ergänzt ausschließlich bekannte, explizit namespaced IDs
+  aus Biome-, Item-, Block- oder Entity-Type-Registries. Gewöhnliche Triggernamen bleiben ohne Label.
+- Effekte unter `/player` (und in Item-Potion-Details) ergänzen `name`. `/environment` ergänzt
+  `biome_name`; bei ungeladenem Chunk bleiben `biome` und `biome_name` null.
+- `/stats` behält `type`, `id`, den rohen `value` und ergänzt `name` sowie `formatted_value` aus
+  dem Vanilla-Statistikformatter. Spielzeit bleibt beispielsweise zusätzlich als Tickzahl verfügbar.
+- `item_details=true` ergänzt bei nicht leeren, innerhalb des Detail-Limits ausgewerteten Stacks
+  ein `tooltip`-Array. Es verwendet den Vanilla-Inventar-Tooltip für den aktuellen Spieler und die
+  aktuelle Sprache, einschließlich der Einstellung für erweiterte Tooltips. Jede Zeile enthält `text`
+  und `color` (RGB-Zahl); `runs` bewahrt zusätzlich die Textabschnitte mit unterschiedlichen Farben.
+  Enchantment-Objekte ergänzen `name` einschließlich Stufe. Das bestehende Item-`name` bleibt unverändert.
+  Ohne Details oder bei leeren Stacks entsteht kein Tooltip-Feld. Grafische Tooltip-Inhalte wie
+  Bundle-Vorschauen sind keine Textzeilen und werden hier nicht als Bild nachgebaut.
+
+`GET /blocks` behält `palette` als Array von Block-ID-Strings. Das zusätzliche `palette_entries`
+enthält am selben Index `{id,map_color}` mit der RGB-Zahl aus `BlockState.getMapColor` am gelesenen
+Ort. Derselbe Block-ID-String kann mehrfach auftreten, wenn seine Zustände/Positionen unterschiedliche
+Map-Farben liefern. Die Farbe ist die Vanilla-Map-Farbe, keine Texturprobe oder fertige, schattierte Karte.
+
+`GET /surface?chunk_x1=-8&chunk_z1=-8&chunk_x2=7&chunk_z2=7` liest ein inklusives Rechteck in
+**Chunk-Koordinaten**. Maximal 65536 angefragte Spalten (256 Chunks) pro Request; größere Bereiche
+in mehrere Rechtecke aufteilen. Die Grenze gilt auch für fehlende Chunks. Die Antwort enthält:
+
+- `columns`: `[x,z,y,palette_index]` für den höchsten Nicht-Luft-Block jeder geladenen Spalte,
+  einschließlich Flüssigkeiten, aus der aktuellen `WORLD_SURFACE`-Heightmap.
+- `palette` und `palette_entries`: dasselbe Format wie `/blocks`.
+- `unloaded_chunks`: `[chunk_x,chunk_z]` für ausgelassene Chunks. Sie werden weder geladen noch
+  als Luft ausgegeben; auch ein vollständig ungeladenes Rechteck ist eine erfolgreiche, explizit leere Antwort.
+- `empty_columns`: `[x,z]` für tatsächlich vollständig leere **geladene** Spalten.
+- `requested_columns` und `max_columns`: angefragte Größe und Limit.
+
+`GET /item/icon?id=minecraft:potion` liefert das Standard-Icon eines registrierten Items.
+`GET /item/icon?slot=0` rendert den aktuell vorhandenen Stack im Spieler-Inventarslot (die Slotnummern
+von `/inventory`, keine Container-Menüslots). Genau einen Parameter verwenden. Der Erfolg ist direkt
+`image/png`, 32×32 Pixel mit Transparenz, **kein JSON/Base64 und keine URL**. Die bestehende Loopback-,
+Host- und `X-Password`-Prüfung gilt weiterhin. `Cache-Control: no-store` verhindert Wiederverwendung.
+
+Der Endpunkt löst das GUI-Modell aus den geladenen Client-Ressourcen auf und rendert es über den
+Vanilla-Item-Atlas in eine frische, nur für diesen Request verwendete Textur. Dadurch werden auch
+Mod-Items und Stack-Tints wie Potion-Farbe und gefärbtes Leder berücksichtigt. Kein Count-/Haltbarkeits-
+Overlay und kein Enchantment-Glint. Unbekannte IDs, leere Slots oder nicht geladene/nicht darstellbare
+Item-Modelle liefern 404 als normale JSON-Fehlerantwort. Ungültige Parameter liefern 400; Slotabfragen
+außerhalb einer Welt 409. Höchstens zwei GPU-Readbacks gleichzeitig, darüber 429. Die temporären GPU-
+Ressourcen werden nach dem Readback freigegeben; es gibt keinen Icon-Cache. PNG-Abfragen sind GET-only
+und nicht innerhalb von `/batch` verfügbar. `/inventory` enthält weiterhin keine eingebetteten Bilder.
+
 ## Script-HUD
 
 Timer, Zähler und Fortschrittsbalken sind flüchtige Anzeigen, deren Werte das Script liefert.
@@ -426,7 +478,7 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 ## Tests
 
 Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
-Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness`, `ScreenWidgetsHarness`, `RecipeDataHarness`, `HudWidgetsHarness` und `HudDispatchHarness` gegen echte Minecraft-26.3-Datenobjekte aus
+Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness`, `ScreenWidgetsHarness`, `RecipeDataHarness`, `HudWidgetsHarness`, `HudDispatchHarness` und `PresentationHarness` gegen echte Minecraft-26.3-Datenobjekte aus
 (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
 Die HTTP-Tests verwenden freie lokale Ports; der Plugin-Harness verwendet Port 25581.
 

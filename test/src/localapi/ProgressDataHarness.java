@@ -107,6 +107,8 @@ public final class ProgressDataHarness {
     public static void main(String[] args) throws Exception {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        var registries = net.minecraft.data.registries.VanillaRegistries.createWorldLookup();
+        BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(registries).forEach(net.minecraft.core.component.DataComponentInitializers.PendingComponents::apply);
         advancements();
         statistics();
         System.out.println("PASS " + checks + " advancement/statistics checks");

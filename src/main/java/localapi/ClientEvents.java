@@ -20,6 +20,7 @@ public final class ClientEvents {
         if (connection == handler && SessionEvents.INSTANCE.active()) return;
         HudWidgets.INSTANCE.clear();
         connection = handler;
+        StatsSync.begin(handler);
         playerStamp = null;
         screenToken = 0;
         SessionEvents.INSTANCE.begin(dimension(mc));
@@ -30,6 +31,7 @@ public final class ClientEvents {
         if (connection != handler) return;
         HudWidgets.INSTANCE.clear();
         SessionEvents.INSTANCE.end();
+        StatsSync.end(handler);
         connection = null;
         playerStamp = null;
     }

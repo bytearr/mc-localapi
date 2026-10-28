@@ -18,7 +18,13 @@
     "RecipeBookEventsMixin",
     "RecipeBookScreenAccessor",
     "RecipeBookPlacementInvoker",
-    "ModelManagerAccessor"
+    "ModelManagerAccessor",
+    "OptionInstanceAccessor",
+    "VideoOptionsInvoker",
+    "MouseSettingsScreenInvoker",
+    "ChatOptionsScreenInvoker",
+    "AccessibilityOptionsScreenInvoker",
+    "FontOptionsScreenInvoker"
   ],
   "injectors": {
     "defaultRequire": 1

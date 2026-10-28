@@ -46,12 +46,15 @@ public final class Router {
     @FunctionalInterface
     interface Handler { Object handle(Request r) throws Exception; }
 
-    private record Route(boolean mutating, Handler h) {}
+    private record Route(boolean mutating, boolean invalidatesGameState, Handler h) {}
 
     private static final Map<String, Route> ROUTES = new LinkedHashMap<>();
 
-    private static void get(String path, Handler h) { ROUTES.put(path, new Route(false, h)); }
-    private static void post(String path, Handler h) { ROUTES.put(path, new Route(true, h)); }
+    private static void get(String path, Handler h) { ROUTES.put(path, new Route(false, false, h)); }
+    private static void post(String path, Handler h) { ROUTES.put(path, new Route(true, true, h)); }
+
+    // POST authorization and game-state invalidation are independent.
+    private static void postWithoutInvalidation(String path, Handler h) { ROUTES.put(path, new Route(true, false, h)); }
 
     static {
         // ---- read ----
@@ -82,6 +85,12 @@ public final class Router {
             ROUTES.forEach((k, v) -> a.add((v.mutating ? "POST " : "GET  ") + k));
             return a;
         });
+        get("/hud/widgets", r -> { needPlayer(); return HudWidgets.INSTANCE.list(r); });
+        postWithoutInvalidation("/hud/owner/create", r -> { needPlayer(); return HudWidgets.INSTANCE.create(r); });
+        postWithoutInvalidation("/hud/owner/renew", r -> { needPlayer(); return HudWidgets.INSTANCE.renew(r); });
+        postWithoutInvalidation("/hud/owner/release", r -> HudWidgets.INSTANCE.release(r));
+        postWithoutInvalidation("/hud/widgets/put", r -> { needPlayer(); return HudWidgets.INSTANCE.put(r); });
+        postWithoutInvalidation("/hud/widgets/remove", r -> HudWidgets.INSTANCE.remove(r));
         // ---- act ----
         post("/key/down", r -> { Keys.down(r.reqStr("key")); return heldJson(); });
         post("/key/up", r -> { Keys.up(r.reqStr("key")); return heldJson(); });
@@ -102,7 +111,8 @@ public final class Router {
             return ok();
         });
         post("/screenshot", Router::screenshot);
-        post("/batch", r -> BatchRequests.dispatch(r, Router::dispatch));
+        // Each dispatched child supplies its own invalidation, including in mixed batches.
+        postWithoutInvalidation("/batch", r -> BatchRequests.dispatch(r, Router::dispatch));
     }
 
     private Router() {}
@@ -163,6 +173,12 @@ public final class Router {
                 "type:string (PICKUP QUICK_MOVE SWAP CLONE THROW QUICK_CRAFT PICKUP_ALL)", "container_id:integer");
         doc("/screen/activate", "Activate a supported widget on the inspected screen", "revision:string!", "ref:string!");
         doc("/screen/text", "Replace a supported text field value", "revision:string!", "ref:string!", "text:string!");
+        doc("/hud/widgets", "Inspect your live script-owned HUD widgets", "owner:string!");
+        doc("/hud/owner/create", "Create an expiring HUD owner lease", "ttl_ms:integer");
+        doc("/hud/owner/renew", "Renew an existing HUD owner lease", "owner:string!", "ttl_ms:integer");
+        doc("/hud/owner/release", "Remove an owner and all its widgets", "owner:string!");
+        doc("/hud/widgets/put", "Create or replace a widget; does not renew owner lease", "owner:string!", "id:string!", "type:string!", "label:string!", "value:number!", "max:number", "running:boolean", "x:integer", "y:integer", "width:integer", "ttl_ms:integer");
+        doc("/hud/widgets/remove", "Remove a widget owned by this lease", "owner:string!", "id:string!");
         doc("/screen/close", "Close the open container or screen");
         doc("/chat", "Send a chat message or a /command", "text:string!");
         doc("/chat/echo", "Show a local-only message", "text:string!");
@@ -181,7 +197,7 @@ public final class Router {
         }
         if (route.mutating && !req.method().equals("POST")) throw new HttpError(405, req.path() + " needs POST");
         Object result = route.h.handle(req);
-        if (route.mutating) ClientEvents.invalidate("/state", "/player", "/inventory", "/container", "/screen", "/target", "/hand");
+        if (route.invalidatesGameState) ClientEvents.invalidate("/state", "/player", "/inventory", "/container", "/screen", "/target", "/hand");
         return result;
     }
 

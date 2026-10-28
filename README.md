@@ -93,6 +93,57 @@ berücksichtigt, einfacher ist es sie auszuschalten.
 | `GET /chat/log?since=0` | empfangene Chat-/System-Nachrichten, `since` = zuletzt gesehene id |
 | `GET /routes` | Liste aller Routen |
 
+## Script-HUD
+
+Timer, Zähler und Fortschrittsbalken sind flüchtige Anzeigen, deren Werte das Script liefert.
+Keine Inventarableitungen, Journal-Einträge, Dateien oder Wegpunkt-Marker. Alle Routen verwenden die
+vorhandene API-Authentifizierung; `owner` ist zusätzlich ein zufälliges Lease-Token. Token nicht zwischen
+Scripts teilen: Es berechtigt zum Lesen und Ändern genau dieses Besitzers (keine eigene Benutzer-Authentifizierung).
+
+| Route | Zweck |
+|---|---|
+| `POST /hud/owner/create` | Lease anlegen, Antwort `{owner,ttl_ms}` |
+| `POST /hud/owner/renew` | bestehende Lease verlängern, `owner` erforderlich |
+| `POST /hud/owner/release` | Lease und alle zugehörigen Widgets sofort entfernen |
+| `GET /hud/widgets?owner=…` | nur die Widgets dieser Lease und Restlaufzeiten lesen |
+| `POST /hud/widgets/put` | Widget über `owner` + `id` anlegen oder vollständig ersetzen |
+| `POST /hud/widgets/remove` | genau dieses Widget entfernen, Antwort `{removed}` |
+
+Leases: `ttl_ms` standardmäßig 10000, erlaubt 1000–30000. Vor Ablauf explizit erneuern (z. B. alle
+3 Sekunden bei 10 Sekunden TTL). Ein abgestürztes Script kann daher höchstens bis zum Lease-Ablauf
+sichtbare Widgets hinterlassen. Bei sauberem Shutdown `/hud/owner/release` aufrufen. Abgelaufene Token
+liefern 404 und lassen sich nicht wiederbeleben. Join, Disconnect, Respawn/Dimensionswechsel und
+Client-Ende verwerfen alle Leases. Danach muss das Script eine neue Lease und neue Widgets anlegen.
+
+Beispiel für ein Widget (`owner` durch das Token ersetzen):
+
+```json
+{"owner":"…","id":"building","type":"progress","label":"Platziert","value":23,"max":100,"x":8,"y":8,"width":180,"ttl_ms":10000}
+```
+
+`type` ist `counter`, `progress` oder `timer`; `id`, `label`, `value` sind Pflichtfelder. `put` ersetzt
+immer den kompletten Eintrag: optionale Felder bekommen wieder ihre Standardwerte. Eine Änderung
+verlängert nur die Widget-TTL, **nicht** die Lease; Lease-Erneuerung verlängert keine Widget-TTL.
+Beide müssen gültig sein. IDs sind innerhalb einer Lease eindeutig; gleiche IDs anderer Scripts bleiben getrennt.
+
+- `counter`: ganzzahliger Wert zwischen −1 Milliarde und +1 Milliarde.
+- `progress`: `0 <= value <= max`, `max` standardmäßig 100 und höchstens 1 Milliarde.
+- `timer`: verbleibende Sekunden, 0 bis 1 Milliarde. `running` standardmäßig `false`; bei `true`
+  zählt die Anzeige anhand einer monotonen Echtzeituhr bis null herunter, auch während Spielpausen.
+  Das Script kann jederzeit den Wert ersetzen. Null löst keine Aktion aus; das Widget bleibt bis zur TTL sichtbar.
+- Widget-`ttl_ms`: 100–60000, Standard 10000. `x`/`y`: 0–10000 GUI-Pixel ab links oben, Standard 8.
+  `width`: 40–400, Standard 180. GUI-Skalierung erfolgt durch Minecraft; bei Resize werden Position und
+  Größe in den sichtbaren Bereich begrenzt. Lange Texte werden abgeschnitten. Bei F1 wird nichts gezeichnet.
+- `id` maximal 64, `label` maximal 128 Zeichen, nicht leer, einzeilig und ohne Formatierungs-Steuercodes.
+
+Maximal 16 Leases, 16 Widgets je Lease und insgesamt 64 Widgets; Überschreitung liefert 429.
+Ungültige Werte liefern 400 und lassen den bisherigen Eintrag stehen. Updates vorhandener IDs sind
+auch bei erreichtem Limit möglich. Überlappung und Anordnung legt das Script fest; spätere Einträge
+werden über früheren gezeichnet. `GET` liefert die aktuelle Timer-Anzeige, Position/Größe wie vom Script
+angegeben und `remaining_ms` begrenzt auf Widget- und Lease-Restlaufzeit. HUD-Daten werden nicht ins
+Session-Journal oder den Event-Stream übernommen. HUD-POSTs lösen keine Spielzustands-Invalidierung aus,
+auch nicht innerhalb von `/batch`; dort invalidieren nur die jeweiligen Spielaktionen. Die Routen zum Anlegen/Ändern/Lesen erfordern eine aktive Welt.
+
 ## Rezeptbuch
 
 `GET /recipes?after=-1&limit=100` liest nur die tatsächlich im Client bekannten Rezeptanzeigen.
@@ -375,7 +426,7 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 ## Tests
 
 Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
-Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness`, `ScreenWidgetsHarness` und `RecipeDataHarness` gegen echte Minecraft-26.3-Datenobjekte aus
+Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness`, `ScreenWidgetsHarness`, `RecipeDataHarness`, `HudWidgetsHarness` und `HudDispatchHarness` gegen echte Minecraft-26.3-Datenobjekte aus
 (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
 Die HTTP-Tests verwenden freie lokale Ports; der Plugin-Harness verwendet Port 25581.
 

@@ -18,6 +18,7 @@ public final class ClientEvents {
 
     public static void join(ClientPacketListener handler, Minecraft mc) {
         if (connection == handler && SessionEvents.INSTANCE.active()) return;
+        HudWidgets.INSTANCE.clear();
         connection = handler;
         playerStamp = null;
         screenToken = 0;
@@ -27,6 +28,7 @@ public final class ClientEvents {
 
     public static void disconnect(ClientPacketListener handler) {
         if (connection != handler) return;
+        HudWidgets.INSTANCE.clear();
         SessionEvents.INSTANCE.end();
         connection = null;
         playerStamp = null;
@@ -41,6 +43,7 @@ public final class ClientEvents {
     }
 
     public static void respawn(Minecraft mc) {
+        HudWidgets.INSTANCE.clear();
         SessionEvents.INSTANCE.respawn(dimension(mc));
         playerStamp = null;
         invalidate("/state", "/world", "/player", "/inventory", "/container", "/screen");

@@ -49,12 +49,16 @@ public final class Router {
     private record Route(boolean mutating, boolean invalidatesGameState, Handler h) {}
 
     private static final Map<String, Route> ROUTES = new LinkedHashMap<>();
+    private static final Map<String, Route> POST_OVERRIDES = new LinkedHashMap<>();
 
     private static void get(String path, Handler h) { ROUTES.put(path, new Route(false, false, h)); }
     private static void post(String path, Handler h) { ROUTES.put(path, new Route(true, true, h)); }
 
     // POST authorization and game-state invalidation are independent.
-    private static void postWithoutInvalidation(String path, Handler h) { ROUTES.put(path, new Route(true, false, h)); }
+    private static void postWithoutInvalidation(String path, Handler h) {
+        var target = ROUTES.containsKey(path) && !ROUTES.get(path).mutating ? POST_OVERRIDES : ROUTES;
+        target.put(path, new Route(true, false, h));
+    }
 
     static {
         // ---- read ----
@@ -77,7 +81,15 @@ public final class Router {
         get("/bossbars", r -> { needPlayer(); return LiveData.bossbars(mc()); });
         get("/advancements", r -> ProgressData.advancements(needPlayer().connection.getAdvancements()));
         get("/recipes", r -> RecipeData.list(r, RecipeData.live(mc()), net.minecraft.world.item.crafting.display.SlotDisplayContext.fromLevel(needLevel()), ScreenWidgets.INSTANCE));
-        get("/stats", r -> ProgressData.statistics(needPlayer().getStats()));
+        get("/stats", r -> {
+            JsonObject out = ProgressData.statistics(needPlayer().getStats());
+            out.addProperty("received", StatsSync.received(mc().getConnection())); return out;
+        });
+        postWithoutInvalidation("/stats/sync", r -> StatsSync.request(mc().getConnection()));
+        get("/options", r -> OptionsData.read(mc()));
+        postWithoutInvalidation("/options", r -> OptionsData.write(r, mc()));
+        get("/mods", r -> ModData.list(FabricLoader.getInstance().getAllMods()));
+        get("/mod/icon", r -> java.util.concurrent.CompletableFuture.supplyAsync(() -> ModData.icon(r, FabricLoader.getInstance().getAllMods())));
         get("/journal", r -> SessionEvents.INSTANCE.journal(r));
         get("/events", r -> { throw new HttpError(400, "/events is an NDJSON stream; open it directly with GET"); });
         get("/keys", Router::keys);
@@ -85,6 +97,7 @@ public final class Router {
         get("/routes", r -> {
             JsonArray a = new JsonArray();
             ROUTES.forEach((k, v) -> a.add((v.mutating ? "POST " : "GET  ") + k));
+            POST_OVERRIDES.keySet().forEach(k -> a.add("POST " + k));
             return a;
         });
         get("/hud/widgets", r -> { needPlayer(); return HudWidgets.INSTANCE.list(r); });
@@ -160,6 +173,11 @@ public final class Router {
         doc("/advancements", "Client-known advancements and received criterion progress");
         doc("/recipes", "Client-known recipe displays and live craftability", "after:integer", "limit:integer", "item_details:boolean");
         doc("/recipes/select", "Request normal recipe-book placement on the inspected menu", "revision:string!", "container_id:integer!", "id:integer!", "all:boolean");
+        doc("/stats/sync", "Request the server statistics packet without waiting");
+        doc("/options", "Live vanilla options and their own ranges and labels");
+        DOCS.put("POST /options", new RouteDoc("POST", "/options", "Change one vanilla option or key binding", List.of("id:string!", "value:json!")));
+        doc("/mods", "Loaded Fabric mods and public metadata");
+        doc("/mod/icon", "Metadata-selected mod PNG, no cache", "id:string!");
         doc("/stats", "Counters currently present in the client statistics map");
         doc("/events", "Transient NDJSON invalidations; fetch current state from live routes");
         doc("/journal", "Historical facts for this session, never current state", "since:integer", "limit:integer", "session:string");
@@ -191,7 +209,8 @@ public final class Router {
     }
 
     public static Object dispatch(Request req) throws Exception {
-        Route route = ROUTES.get(normalize(req.path()));
+        String path = normalize(req.path());
+        Route route = req.method().equals("POST") && POST_OVERRIDES.containsKey(path) ? POST_OVERRIDES.get(path) : ROUTES.get(path);
         if (route == null) {
             JsonObject extra = new JsonObject();
             JsonArray a = new JsonArray();

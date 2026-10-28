@@ -150,6 +150,58 @@ außerhalb einer Welt 409. Höchstens zwei GPU-Readbacks gleichzeitig, darüber 
 Ressourcen werden nach dem Readback freigegeben; es gibt keinen Icon-Cache. PNG-Abfragen sind GET-only
 und nicht innerhalb von `/batch` verfügbar. `/inventory` enthält weiterhin keine eingebetteten Bilder.
 
+## Passende Verzauberungen
+
+Mit `item_details=true` erhalten nicht leere, nicht abgeschnittene Item-Antworten zusätzlich
+`fits:[{id,name,max_level,level}]`. Die Liste verwendet die aktuellen Client-Registries:
+Die Verzauberung muss auf den Stack passen, mit seinen vorhandenen Verzauberungen kompatibel sein
+und unter ihrer Maximalstufe liegen. `level` ist die vorhandene Stufe (sonst 0), `name` der übersetzte
+Name ohne Stufensuffix. Höherstufungen bleiben möglich; Schätze und Flüche werden nicht ausgefiltert.
+Ohne verfügbare Welt-Registry ist `fits` null. Keine Empfehlungen, Kosten oder Amboss-Aktionen.
+
+Bei `STORED_ENCHANTMENTS` kommt `book_targets:[{id,name,level,max_level,slots}]` hinzu.
+`slots` enthält passende, nicht leere Slots des aktuellen `player.inventoryMenu`, mit den Indizes
+von `/inventory`: 5–8 Rüstung, 9–35 Inventar, 36–44 Hotbar, 45 Offhand. Crafting-Slots fehlen.
+Geprüft werden Anwendbarkeit und Kompatibilität, nicht die Möglichkeit einer weiteren Höherstufung.
+Die Daten werden pro Anfrage gelesen und nicht gespeichert.
+
+## Vanilla-Clientoptionen
+
+`GET /options` funktioniert auch ohne Welt und liefert `{options:[...]}`. Jede Zeile hat
+`id`, `name`, `group`, `kind`, `value` und `label`. IDs stammen aus den Vanilla-Übersetzungsschlüsseln,
+Namen und Labels aus der aktuellen Sprache und dem eigenen Optionsformatter.
+Die Gruppen umfassen Video (einschließlich FOV und Vollbildauflösung), Sound, Maus, Chat, Skin,
+Barrierefreiheit, Online, Font, Sprache und alle registrierten Tastenbelegungen einschließlich Debug.
+Skin-Teile werden wie ihre Vanilla-Schalter behandelt. Account-/Freundesverwaltung gehört nicht dazu.
+
+- `kind`: `boolean`, `int`, `double`, `enum`, `language` oder `key`.
+- `value` bleibt in Vanilla-Einheiten; beispielsweise GUI-Skalierung 0 bleibt 0.
+- Ganzzahlbereiche liefern `min`/`max`, dynamische Grenzen werden live gelesen. Slider liefern
+  zusätzlich ihre Vanilla-Position `slider`. Booleans haben keine numerischen Bereichsfelder.
+- Auswahlen liefern `values:[{id,name}]` in Vanilla-Reihenfolge. Java-Enum-IDs sind deren `name()`;
+  Sprache verwendet Sprachcodes, Tasten verwenden Save-Strings wie `key.keyboard.b`.
+
+`POST /options` mit `{"id":"options.gamma","value":0.5}` ändert genau eine Option über
+Vanillas Validator und Setter und ruft `options.save()` auf. Unbekannte IDs liefern 404;
+abgelehnte Werte 400 ohne Änderung. Dynamische Clamp-Validatoren dürfen den Wert wie Vanilla begrenzen;
+die Antwort `{id,value}` enthält den tatsächlich übernommenen Wert. Keine manuelle `options.txt`-Bearbeitung.
+Tastenbelegungen werden gesetzt und die Zuordnung aktualisiert, die Taste wird nicht gedrückt.
+Sprachwechsel verwenden den LanguageManager und den normalen Ressourcen-Reload; die Antwort ergänzt
+`reload_requested`, wartet aber nicht auf dessen Abschluss. Vanilla-seitige Neustart-Anforderungen
+(z. B. Grafik-Backend) bleiben bestehen. Optionsänderungen erzeugen keine pauschale Inventar-/Spielzustandsinvalidierung.
+
+## Installierte Mods
+
+`GET /mods` liefert `{mods:[{id,name,version,description,authors,environment,has_icon}]}`, nach ID sortiert,
+aus allen Fabric-Modcontainern einschließlich eingebauter und verschachtelter Mods. `authors` enthält
+nur Namen, `version` die Friendly-Version. Keine Pfade, Kontaktinformationen oder Custom-Metadaten.
+
+`GET /mod/icon?id=localapi` liest ausschließlich den Iconpfad aus den Mod-Metadaten (128er-Auswahl).
+Erfolg ist direkt `image/png`, ohne JSON/Base64 und mit `Cache-Control: no-store`.
+Unbekannter Mod, fehlende Datei, falsche PNG-Signatur oder mehr als 1 MiB liefern 404 als JSON.
+Datei-I/O läuft asynchron, ohne Cache oder angelegte Dateien. Die Route ist GET-only, geschützt wie
+andere API-Routen und nicht in `/batch` verfügbar.
+
 ## Script-HUD
 
 Timer, Zähler und Fortschrittsbalken sind flüchtige Anzeigen, deren Werte das Script liefert.
@@ -358,7 +410,7 @@ zählt erfüllte Anforderungsgruppen, nicht einfach erfüllte Kriterien. Kriteri
 Clientfortschritt; serverseitige Triggerbedingungen werden nicht rekonstruiert. Auch Widerrufe und
 entfernte Erfolge werden beim nächsten Lesen berücksichtigt.
 
-`GET /stats` liefert `{stats:[{type,id,value},...]}`. Es werden nur Einträge aus dem tatsächlichen
+`GET /stats` liefert `{stats:[{type,id,value},...],received:boolean}`. Es werden nur Einträge aus dem tatsächlichen
 Vanilla-Statistikbestand ausgegeben. Ein fehlender Zähler ist **nicht** null; ein ausdrücklich vorhandener
 Nullwert wird ausgegeben. Typen umfassen `minecraft:mined`, `minecraft:used`, `minecraft:crafted`,
 `minecraft:killed` und `minecraft:custom` sowie weitere vorhandene Typen wie aufgehoben/weggeworfen.
@@ -372,6 +424,12 @@ Hintergrundabfrage oder automatische Serveranfrage. Statistiken können bis zur 
 (z. B. beim Öffnen des Statistikbildschirms) fehlen oder den zuletzt empfangenen Wert enthalten.
 Die Antwort behauptet keinen frisch abgefragten Serverstand. Ohne aktive Welt liefern beide Routen 409.
 Diese Live-Ansichten bleiben unabhängig vom NDJSON-Stream und Session-Journal.
+
+`POST /stats/sync` fordert mit Vanillas `REQUEST_STATS` einmal ein Statistikpaket beim Server an.
+Die Antwort `{requested:true}` bestätigt nur das Absenden, ohne auf die Antwort zu warten.
+Ohne Verbindung folgt 409. `GET /stats` ergänzt `received`: erst nach einem Statistikpaket der aktuellen
+Verbindung (auch einem leeren) true, nach Disconnect oder neuer Verbindung wieder false.
+Kein automatisches Polling, keine erfundenen Nullzähler, kein zusätzlicher Statistik-Snapshot.
 
 ## Live-Daten und optionale Details
 
@@ -483,7 +541,7 @@ AutoHotkey v2: siehe `examples/mc.ahk`.
 ## Tests
 
 Nach `.\build.ps1` führt `.\test\run-test.ps1` die Request-Regressionstests und den vorhandenen
-Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness`, `ScreenWidgetsHarness`, `RecipeDataHarness`, `HudWidgetsHarness`, `HudDispatchHarness` und `PresentationHarness` gegen echte Minecraft-26.3-Datenobjekte aus
+Plugin-Harness sowie `LiveDataHarness`, `ProgressDataHarness`, `SessionEventsHarness`, `ScreenWidgetsHarness`, `RecipeDataHarness`, `HudWidgetsHarness`, `HudDispatchHarness`, `PresentationHarness` und `ClientMetadataHarness` gegen echte Minecraft-26.3-Datenobjekte aus
 (ohne gestartetes Minecraft, mit denselben lokalen Build-Abhängigkeiten).
 Die HTTP-Tests verwenden freie lokale Ports; der Plugin-Harness verwendet Port 25581.
 

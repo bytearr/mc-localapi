@@ -35,6 +35,7 @@ final class ItemView {
         }
         remaining--;
         out.add("tooltip", tooltip(stack));
+        EnchantmentData.add(out, stack);
         d.addProperty("available", true);
         d.add("enchantments", enchantments(stack.getOrDefault(DataComponents.ENCHANTMENTS, ItemEnchantments.EMPTY)));
         d.add("stored_enchantments", enchantments(stack.getOrDefault(DataComponents.STORED_ENCHANTMENTS, ItemEnchantments.EMPTY)));

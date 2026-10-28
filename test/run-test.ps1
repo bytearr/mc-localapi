@@ -27,6 +27,8 @@ if ($LASTEXITCODE) { throw 'HUD-widget checks failed' }
 if ($LASTEXITCODE) { throw 'HUD dispatch/event checks failed' }
 & "$JDK\bin\java" -cp $testCP localapi.PresentationHarness
 if ($LASTEXITCODE) { throw 'presentation checks failed' }
+& "$JDK\bin\java" -cp $testCP localapi.ClientMetadataHarness
+if ($LASTEXITCODE) { throw 'client metadata checks failed' }
 & "$JDK\bin\java" -cp $testCP localapi.RegressionHarness
 if ($LASTEXITCODE) { throw 'regression checks failed' }
 & "$JDK\bin\java" -cp $testCP harness.Harness "$PSScriptRoot\work\root" 'none' '0'

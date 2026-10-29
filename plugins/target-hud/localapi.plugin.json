@@ -1,0 +1,8 @@
+{
+  "id": "target-hud",
+  "name": "Target HUD",
+  "version": "1.0.1",
+  "apiVersion": 1,
+  "description": "Live target name and registry ID, block icon with a correct-tool check/cross and local mining progress, plus living-entity health and armor. Hidden with F1, pause or any open screen. Minecraft 26.3.",
+  "entrypoint": "targethud.TargetHudPlugin"
+}

@@ -138,8 +138,9 @@ in mehrere Rechtecke aufteilen. Die Grenze gilt auch für fehlende Chunks. Die A
 `GET /item/icon?id=minecraft:potion` liefert das Standard-Icon eines registrierten Items.
 `GET /item/icon?slot=36` rendert den aktuell vorhandenen Stack im Slot von `player.inventoryMenu`,
 genau wie `/inventory`: 36–44 Hotbar, 9–35 Inventar, 5–8 Rüstung und 45 Offhand (0–4 Crafting).
-Das gilt auch bei geöffneter Truhe; deren `containerMenu` wird nicht gelesen. Außerhalb der Slots dieses
-Spieler-Menüs folgt 400, bei einem leeren Slot 404. Genau einen Parameter verwenden. Der Erfolg ist direkt
+`container=true` liest stattdessen denselben Slot-Index wie `/container` (`containerMenu`), inklusive
+Custom-Model auf dem echten Stack. Außerhalb der Slots des gewählten Menüs folgt 400, bei einem leeren
+Slot 404. Genau eines von `id` oder `slot`. Der Erfolg ist direkt
 `image/png`, 32×32 Pixel mit Transparenz, **kein JSON/Base64 und keine URL**. Die bestehende Loopback-,
 Host- und `X-Password`-Prüfung gilt weiterhin. `Cache-Control: no-store` verhindert Wiederverwendung.
 

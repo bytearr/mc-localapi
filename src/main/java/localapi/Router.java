@@ -165,7 +165,7 @@ public final class Router {
         doc("/block", "Block and block state at a position", "x:integer!", "y:integer!", "z:integer!");
         doc("/blocks", "Region of blocks (max 32768)", "x1:integer!", "y1:integer!", "z1:integer!",
                 "x2:integer!", "y2:integer!", "z2:integer!", "include_air:boolean");
-        doc("/item/icon", "Fresh inventory icon PNG, exactly one of id or slot", "id:string", "slot:integer");
+        doc("/item/icon", "Fresh inventory icon PNG, exactly one of id or slot", "id:string", "slot:integer", "container:boolean");
         doc("/surface", "Live highest non-air blocks in loaded chunks", "chunk_x1:integer!", "chunk_z1:integer!", "chunk_x2:integer!", "chunk_z2:integer!");
         doc("/environment", "Live biome and lighting (loaded chunks only)", "x:integer!", "y:integer!", "z:integer!");
         doc("/scoreboard", "Client-known objectives, scores and teams");

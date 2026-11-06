@@ -31,9 +31,10 @@ final class ItemIcons {
             stack = BuiltInRegistries.ITEM.getValue(id).getDefaultInstance();
         } else {
             if (mc.player == null || mc.level == null) throw new HttpError(409, "not in a world");
+            var menu = r.bool("container", false) ? mc.player.containerMenu : mc.player.inventoryMenu;
             double slot = r.reqDbl("slot");
-            if (slot != Math.rint(slot) || slot < 0 || slot >= mc.player.inventoryMenu.slots.size()) throw new HttpError(400, "invalid inventory slot");
-            stack = mc.player.inventoryMenu.getSlot((int)slot).getItem();
+            if (slot != Math.rint(slot) || slot < 0 || slot >= menu.slots.size()) throw new HttpError(400, r.bool("container", false) ? "invalid container slot" : "invalid inventory slot");
+            stack = menu.getSlot((int)slot).getItem();
         }
         if (stack.isEmpty()) throw new HttpError(404, "empty item stack");
         return stack.copy();
